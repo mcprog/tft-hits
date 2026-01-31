@@ -1,0 +1,23 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.env
+
+# --- Docker ---
+.dockerignore
+# Optional: if you want to ignore images exported as tars
+*.tar
+
+# --- OS / IDE ---
+.DS_Store
+.vscode/
+.idea/
+
+# --- Project Specific ---
+# Ignore the actual data if you ever decide to cache JSON responses locally
+*.json
+!composer.json # if applicable

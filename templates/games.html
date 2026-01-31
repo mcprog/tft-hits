@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="mb-8">
+    <h2 class="text-2xl font-bold">Highlights for <span class="text-blue-400">{{ user }}</span></h2>
+    <p class="text-slate-400">Showing only games that hit our "Epic" criteria.</p>
+</div>
+
+<div class="grid gap-6">
+    {% for game in games %}
+    <div class="bg-slate-800 p-6 rounded-xl border-l-4 border-yellow-500">
+        <div class="flex justify-between items-start">
+            <div>
+                <span class="text-sm font-mono text-slate-400 uppercase">Match ID: {{ game.match_id }}</span>
+                <h3 class="text-xl font-bold mt-1">Placement: #{{ game.placement }}</h3>
+            </div>
+            <div class="flex gap-2">
+                <!-- Badges for why it was a highlight -->
+                {% if game.has_prismatic %}
+                    <span class="bg-purple-900 text-purple-200 px-3 py-1 rounded-full text-xs font-bold">PRISMATIC</span>
+                {% endif %}
+                {% if game.has_high_cost_3star %}
+                    <span class="bg-yellow-900 text-yellow-200 px-3 py-1 rounded-full text-xs font-bold">3-STAR 4/5 COST</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Display Units (Example logic) -->
+        <div class="mt-4 flex flex-wrap gap-3">
+            {% for unit in game.highlight_units %}
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-slate-700 rounded-lg flex items-center justify-center border-2 border-yellow-500">
+                        <span class="text-xs">{{ unit.character_id }}</span>
+                    </div>
+                    <span class="text-[10px] block mt-1">⭐⭐⭐</span>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-20 bg-slate-800 rounded-xl">
+        <p class="text-slate-400 italic">No games found meeting the criteria in your last 20 matches.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
