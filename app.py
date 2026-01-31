@@ -1,20 +1,46 @@
-from flask import Flask, render_template, request
-#import riot_api
+from flask import Flask, render_template, request, redirect, url_for
+import riot_api  # Keeps Pattern B: Loads env vars on import
 
 app = Flask(__name__)
 
+# --- ROUTE 1: The Home Page ---
 @app.route('/')
 def index():
+    # Renders the landing page (e.g., separate index.html)
     return render_template('index.html')
 
-@app.route('/highlights', methods=['POST'])
-def highlights():
-    username = request.form.get('username')
-    # 1. Get PUUID from Riot API
-    # 2. Get recent Match IDs
-    # 3. Filter matches using is_highlight_game()
-    highlight_games = [] # list of filtered match data
-    return render_template('games.html', games=highlight_games, user=username)
+# --- ROUTE 2: The Tool Page ---
+@app.route('/games', methods=['GET', 'POST'])
+def games():
+    # GET: User just arrived at the page. Show empty form.
+    if request.method == 'GET':
+        return render_template('games.html', error=None, username=None, data=None)
+
+    # POST: User submitted the form.
+    full_username = request.form.get('username')
+
+    # --- VALIDATION LOGIC ---
+    # Checks if empty or missing '#'
+    if not full_username or '#' not in full_username:
+        error_text = "Error: please enter a valid username. Use Name#Tag format"
+        # Stays on /games, re-renders with error message
+        return render_template('games.html', username=full_username or "Unknown", error=error_text)
+    
+    # --- API LOGIC ---
+    try:
+        name, tag = full_username.split('#', 1)
+        account_data = riot_api.get_account(name, tag)
+
+        if account_data:
+            return render_template('games.html', username=full_username, data=account_data, error=None)
+        else:
+            return render_template('games.html', username=full_username, error="Summoner not found.")
+            
+    except Exception as e:
+        # Catch-all for unexpected errors
+        return render_template('games.html', username=full_username, error=f"System Error: {str(e)}")
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
