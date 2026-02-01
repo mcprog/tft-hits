@@ -32,7 +32,9 @@ def games():
         account_data = riot_api.get_account(name, tag)
 
         if account_data:
-            return render_template('games.html', username=full_username, data=account_data, error=None)
+            puuid = account_data.get('puuid')
+            games_list = riot_api.get_epic_matches(puuid, count=70)
+            return render_template('games.html', username=full_username, games=games_list, error=None)
         else:
             return render_template('games.html', username=full_username, error="Summoner not found.")
             
