@@ -90,11 +90,16 @@ def get_single_match_detail(match_id, puuid):
         for u in participant.get('units', []):
             raw_id = u.get('character_id', '').lower()
             img_url = f"https://raw.communitydragon.org/latest/game/assets/ux/tft/championsplashes/patching/{raw_id}_teamplanner_splash.tft_set17.png"
+            
+            # Extract just the champion name (e.g., TFT17_Rammus -> Rammus)
+            clean_name = u['character_id'].split('_')[-1]
+            
             processed_units.append({
-                "character_id": u['character_id'].split('_')[-1],
+                "character_id": clean_name,
                 "tier": u['tier'],
                 "image_url": img_url
             })
+
         return {
             "match_id": match_id,
             "placement": participant['placement'],
@@ -107,4 +112,5 @@ def get_single_match_detail(match_id, puuid):
             "units": processed_units,
             "is_epic": True
         }
+        
     return {"is_epic": False}

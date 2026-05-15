@@ -23,15 +23,15 @@
 {% else %}
 
 <input type="hidden" id="user-puuid" value="{{ puuid }}">
-<div id="games-container" class="grid gap-4" data-match-ids='{{ match_ids | tojson }}'>
+<div id="games-container" class="grid gap-6" data-match-ids='{{ match_ids | tojson }}'>
     {% for mid in match_ids %}
     <div id="match-{{ mid }}" class="match-placeholder bg-slate-800 p-6 rounded-xl border border-slate-700 animate-pulse">
-        <div class="flex justify-between items-center">
-            <div class="space-y-3 w-full">
+        <div class="space-y-4">
+            <div class="flex justify-between items-start">
                 <div class="h-4 bg-slate-700 rounded w-1/4"></div>
-                <div class="h-6 bg-slate-700 rounded w-1/2"></div>
+                <div class="h-4 bg-slate-700 rounded w-1/6"></div>
             </div>
-            <div class="h-10 w-10 bg-slate-700 rounded-full"></div>
+            <div class="h-12 bg-slate-700 rounded w-full"></div>
         </div>
     </div>
     {% endfor %}
@@ -44,7 +44,6 @@
 <script>
 const puuid = document.getElementById('user-puuid').value;
 const container = document.getElementById('games-container');
-// Parse the data attribute. VS Code will no longer complain about this line.
 const matchIds = JSON.parse(container.getAttribute('data-match-ids'));
 
 let epicCount = 0;
@@ -70,19 +69,45 @@ async function fetchMatch(matchId) {
         if (data && data.is_epic) {
             epicCount++;
             element.classList.remove('animate-pulse');
+            
+            // Generate star rating icons based on unit tier
+            const getStars = (tier) => {
+                let stars = '';
+                const colorClass = tier === 3 ? 'text-yellow-400' : (tier === 2 ? 'text-slate-300' : 'text-slate-600');
+                for(let i=0; i < tier; i++) {
+                    stars += `<span class="${colorClass} text-[10px]">★</span>`;
+                }
+                return stars;
+            };
+
             element.innerHTML = `
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <p class="text-sm text-slate-400">${data.readable_date}</p>
-                        <h3 class="text-xl font-bold">Rank: <span class="text-blue-400">#${data.placement}</span></h3>
-                        <div class="flex gap-2 mt-2">
-                            ${data.has_prismatic ? `<span class="bg-purple-900/50 text-purple-300 px-3 py-1 rounded-full text-xs font-bold border border-purple-500">Prismatic: ${data.prismatic_name}</span>` : ''}
-                            ${data.has_high_cost_3star ? `<span class="bg-yellow-900/50 text-yellow-300 px-3 py-1 rounded-full text-xs font-bold border border-yellow-500">Gold 3-Star: ${data.high_cost_units.join(', ')}</span>` : ''}
+                <div class="flex flex-col gap-6">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">${data.readable_date}</p>
+                            <h3 class="text-2xl font-black italic">Place: <span class="text-blue-400">#${data.placement}</span></h3>
+                            <div class="flex flex-wrap gap-2 mt-3">
+                                ${data.has_prismatic ? `<span class="bg-purple-900/40 text-purple-300 px-3 py-1 rounded border border-purple-500/50 text-xs font-bold uppercase tracking-tight">${data.prismatic_name}</span>` : ''}
+                                ${data.has_high_cost_3star ? data.high_cost_units.map(name => `
+                                    <span class="bg-yellow-900/40 text-yellow-300 px-3 py-1 rounded border border-yellow-500/50 text-xs font-bold uppercase tracking-tight">3* ${name}</span>
+                                `).join('') : ''}
+                            </div>
                         </div>
                     </div>
-                    <div class="flex -space-x-2 overflow-hidden">
-                        ${data.units.slice(0, 8).map(u => `
-                            <img src="${u.image_url}" class="inline-block h-10 w-10 rounded-full ring-2 ring-slate-800" title="${u.character_id}">
+
+                    <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700/50">
+                        ${data.units.map(u => `
+                            <div class="flex flex-col items-center">
+                                <div class="flex h-3 mb-1 items-center justify-center">
+                                    ${getStars(u.tier)}
+                                </div>
+                                <div class="relative">
+                                    <img src="${u.image_url}" 
+                                         class="h-12 w-12 rounded bg-slate-900 border ${u.tier === 3 ? 'border-yellow-500' : 'border-slate-700'}" 
+                                         alt="${u.character_id}">
+                                </div>
+                                <p class="text-[10px] mt-1 text-slate-400 font-medium truncate w-12 text-center capitalize">${u.character_id}</p>
+                            </div>
                         `).join('')}
                     </div>
                 </div>
@@ -108,7 +133,6 @@ async function processQueue(ids, concurrency) {
             while (queue.length > 0) {
                 const id = queue.shift();
                 await fetchMatch(id);
-                // 100ms delay helps spread out the burst to avoid 429s
                 await new Promise(r => setTimeout(r, 100));
             }
         })());
@@ -116,7 +140,6 @@ async function processQueue(ids, concurrency) {
     await Promise.all(workers);
 }
 
-// Start with 5 workers for steady loading without slamming the burst limit
 processQueue(matchIds, 5);
 </script>
 
