@@ -46,5 +46,16 @@ def match_details(match_id):
     data = riot_api.get_single_match_detail(match_id, puuid)
     return jsonify(data)
 
+@app.route('/api/get_more_ids')
+def get_more_ids():
+    puuid = request.args.get('puuid')
+    start = int(request.args.get('start', 0))
+    if not puuid:
+        return jsonify({"error": "Missing PUUID"}), 400
+    
+    # Fetch the next batch of 90
+    match_ids = riot_api.get_match_ids(puuid, count=90, start=start)
+    return jsonify(match_ids)
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

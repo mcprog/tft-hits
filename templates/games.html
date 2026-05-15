@@ -4,10 +4,10 @@
 <div class="mb-8 flex justify-between items-end">
     <div>
         <h2 class="text-2xl font-bold">History for <span class="text-blue-400">{{ username }}</span></h2>
-        <p class="text-slate-400">Deep search: Analyzing 90 games for high-rolls.</p>
+        <p class="text-slate-400" id="search-description">Analyzing matches for high-rolls.</p>
     </div>
     <div id="progress-container" class="text-right">
-        <p class="text-sm font-mono text-slate-500"><span id="processed-count">0</span>/90 scanned</p>
+        <p class="text-sm font-mono text-slate-500"><span id="processed-count">0</span>/<span id="total-to-scan">90</span> scanned</p>
         <div class="w-32 h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
             <div id="progress-bar" class="h-full bg-blue-500 transition-all duration-300" style="width: 0%"></div>
         </div>
@@ -15,48 +15,51 @@
 </div>
 
 {% if error %}
-<div class="bg-red-900/30 border-2 border-red-500 p-8 rounded-xl">
-    <h3 class="text-xl font-bold text-red-400 mb-2">Search Error</h3>
-    <p class="text-red-200">{{ error }}</p>
-    <a href="/" class="inline-block mt-4 text-slate-400 hover:text-white underline">Try again</a>
-</div>
 {% else %}
 
 <input type="hidden" id="user-puuid" value="{{ puuid }}">
 <div id="games-container" class="grid gap-6" data-match-ids='{{ match_ids | tojson }}'>
     {% for mid in match_ids %}
     <div id="match-{{ mid }}" class="match-placeholder bg-slate-800 p-6 rounded-xl border border-slate-700 animate-pulse">
-        <div class="space-y-4">
-            <div class="flex justify-between items-start">
-                <div class="h-4 bg-slate-700 rounded w-1/4"></div>
-                <div class="h-4 bg-slate-700 rounded w-1/6"></div>
-            </div>
-            <div class="h-12 bg-slate-700 rounded w-full"></div>
-        </div>
+        <div class="h-20"></div>
     </div>
     {% endfor %}
 </div>
 
 <div id="no-results" class="hidden text-center py-12">
-    <p class="text-slate-500 text-lg">No epic matches found in recent history.</p>
+    <p class="text-slate-500 text-lg">No epic matches found in this batch.</p>
+</div>
+
+<div class="mt-12 mb-20 text-center">
+    <button id="load-more-btn" 
+            class="px-8 py-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-700 rounded-xl font-bold transition-all">
+        Load Another 90 Games
+    </button>
 </div>
 
 <script>
 const puuid = document.getElementById('user-puuid').value;
 const container = document.getElementById('games-container');
-const matchIds = JSON.parse(container.getAttribute('data-match-ids'));
+const loadMoreBtn = document.getElementById('load-more-btn');
+const initialMatchIds = JSON.parse(container.getAttribute('data-match-ids'));
 
+let currentOffset = 90;
 let epicCount = 0;
 let processedCount = 0;
+let totalInBatch = initialMatchIds.length;
 
 function updateProgress() {
     processedCount++;
-    const percent = (processedCount / matchIds.length) * 100;
+    const percent = (processedCount / totalInBatch) * 100;
     document.getElementById('processed-count').innerText = processedCount;
     document.getElementById('progress-bar').style.width = `${percent}%`;
     
-    if (processedCount === matchIds.length && epicCount === 0) {
-        document.getElementById('no-results').classList.remove('hidden');
+    if (processedCount === totalInBatch) {
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.innerText = "Load Another 90 Games";
+        if (epicCount === 0) {
+            document.getElementById('no-results').classList.remove('hidden');
+        }
     }
 }
 
@@ -70,26 +73,28 @@ async function fetchMatch(matchId) {
             epicCount++;
             element.classList.remove('animate-pulse');
             
-            // Generate star rating icons based on unit tier
+            // Name mapping helper
+            const formatName = (name) => name === 'Galio' ? 'The Mighty Mech' : name;
+
             const getStars = (tier) => {
-                let stars = '';
-                const colorClass = tier === 3 ? 'text-yellow-400' : (tier === 2 ? 'text-slate-300' : 'text-slate-600');
-                for(let i=0; i < tier; i++) {
-                    stars += `<span class="${colorClass} text-[10px]">★</span>`;
-                }
-                return stars;
+                let s = '';
+                const c = tier === 3 ? 'text-yellow-400' : (tier === 2 ? 'text-slate-300' : 'text-slate-600');
+                for(let i=0; i<tier; i++) s += `<span class="${c} text-[10px]">★</span>`;
+                return s;
             };
 
             element.innerHTML = `
                 <div class="flex flex-col gap-6">
                     <div class="flex justify-between items-start">
                         <div>
-                            <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">${data.readable_date}</p>
+                            <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                                ${data.readable_date} • <span class="text-blue-400">${data.game_mode}</span>
+                            </p>
                             <h3 class="text-2xl font-black italic">Place: <span class="text-blue-400">#${data.placement}</span></h3>
                             <div class="flex flex-wrap gap-2 mt-3">
                                 ${data.has_prismatic ? `<span class="bg-purple-900/40 text-purple-300 px-3 py-1 rounded border border-purple-500/50 text-xs font-bold uppercase tracking-tight">${data.prismatic_name}</span>` : ''}
-                                ${data.has_high_cost_3star ? data.high_cost_units.map(name => `
-                                    <span class="bg-yellow-900/40 text-yellow-300 px-3 py-1 rounded border border-yellow-500/50 text-xs font-bold uppercase tracking-tight">3* ${name}</span>
+                                ${data.has_high_cost_3star ? data.high_cost_units.map(n => `
+                                    <span class="bg-yellow-900/40 text-yellow-300 px-3 py-1 rounded border border-yellow-500/50 text-xs font-bold uppercase tracking-tight">3* ${formatName(n)}</span>
                                 `).join('') : ''}
                             </div>
                         </div>
@@ -98,15 +103,12 @@ async function fetchMatch(matchId) {
                     <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700/50">
                         ${data.units.map(u => `
                             <div class="flex flex-col items-center">
-                                <div class="flex h-3 mb-1 items-center justify-center">
-                                    ${getStars(u.tier)}
-                                </div>
-                                <div class="relative">
-                                    <img src="${u.image_url}" 
-                                         class="h-12 w-12 rounded bg-slate-900 border ${u.tier === 3 ? 'border-yellow-500' : 'border-slate-700'}" 
-                                         alt="${u.character_id}">
-                                </div>
-                                <p class="text-[10px] mt-1 text-slate-400 font-medium truncate w-12 text-center capitalize">${u.character_id}</p>
+                                <div class="flex h-3 mb-1 items-center justify-center">${getStars(u.tier)}</div>
+                                <img src="${u.image_url}" 
+                                    onerror="this.style.display='none'"
+                                    class="h-12 w-12 rounded bg-slate-900 border ${u.tier === 3 ? 'border-yellow-500' : 'border-slate-700'}" 
+                                    alt="${u.character_id}">
+                                <p class="text-[10px] mt-1 text-slate-400 font-medium truncate w-12 text-center capitalize">${formatName(u.character_id)}</p>
                             </div>
                         `).join('')}
                     </div>
@@ -116,7 +118,7 @@ async function fetchMatch(matchId) {
             if (element) element.remove();
         }
     } catch (err) {
-        console.error("Error loading match:", matchId, err);
+        console.error("Error:", matchId, err);
         const element = document.getElementById(`match-${matchId}`);
         if (element) element.remove();
     } finally {
@@ -125,6 +127,10 @@ async function fetchMatch(matchId) {
 }
 
 async function processQueue(ids, concurrency) {
+    loadMoreBtn.disabled = true;
+    loadMoreBtn.innerText = "Scanning Matches...";
+    document.getElementById('no-results').classList.add('hidden');
+    
     const queue = [...ids];
     const workers = [];
 
@@ -140,7 +146,49 @@ async function processQueue(ids, concurrency) {
     await Promise.all(workers);
 }
 
-processQueue(matchIds, 5);
+loadMoreBtn.addEventListener('click', async () => {
+    loadMoreBtn.disabled = true;
+    loadMoreBtn.innerText = "Fetching Game IDs...";
+
+    try {
+        const res = await fetch(`/api/get_more_ids?puuid=${puuid}&start=${currentOffset}`);
+        const newIds = await res.json();
+
+        if (newIds.length === 0) {
+            loadMoreBtn.innerText = "No More Matches Found";
+            return;
+        }
+
+        // Reset progress trackers for the new batch
+        processedCount = 0;
+        epicCount = 0;
+        totalInBatch = newIds.length;
+        currentOffset += 90;
+        
+        document.getElementById('total-to-scan').innerText = totalInBatch;
+        document.getElementById('processed-count').innerText = "0";
+        document.getElementById('progress-bar').style.width = "0%";
+
+        // Create new placeholders
+        newIds.forEach(mid => {
+            const div = document.createElement('div');
+            div.id = `match-${mid}`;
+            div.className = "match-placeholder bg-slate-800 p-6 rounded-xl border border-slate-700 animate-pulse";
+            div.innerHTML = '<div class="h-20"></div>';
+            container.appendChild(div);
+        });
+
+        // Process the new IDs
+        processQueue(newIds, 5);
+    } catch (err) {
+        console.error("Error loading more:", err);
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.innerText = "Error - Try Again";
+    }
+});
+
+// Initial load
+processQueue(initialMatchIds, 5);
 </script>
 
 {% endif %}
