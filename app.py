@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import riot_api
+import json
 
 app = Flask(__name__)
 
@@ -7,59 +8,43 @@ app = Flask(__name__)
 def index():
     return render_template('index.html')
 
-# --- ROUTE 2: Main UI (Initial Load) ---
 @app.route('/games', methods=['GET', 'POST'])
 def games():
     if request.method == 'GET':
-        return render_template('games.html', error=None, username=None, data=None)
-
-    full_username = request.form.get('username')
-
+        return render_template('games.html', error=None, username=None)
+    
+    full_username = request.form.get('username', '').strip()
     if not full_username or '#' not in full_username:
-        return render_template('games.html', username=full_username or "Unknown", error="Error: Invalid format.")
+        return render_template('games.html', username=full_username, error="Invalid format. Use Name#Tag.")
     
     try:
         name, tag = full_username.split('#', 1)
-        account_data = riot_api.get_account(name, tag)
-
+        account_data = riot_api.get_account(name.strip(), tag.strip())
+        
         if account_data:
             puuid = account_data.get('puuid')
-            # Batch 1: Fetch first 100 games (Start 0)
-            games_list = riot_api.get_epic_matches(puuid, start=0, count=100)
+            # Request 90 match IDs to stay within the 100/2min limit
+            match_ids = riot_api.get_match_ids(puuid, count=90)
             
-            # Render with Batch 1 AND pass 'puuid' for JS to use later
             return render_template(
                 'games.html', 
                 username=full_username, 
-                games=games_list, 
-                puuid=puuid,  # <--- Crucial for background fetches
+                match_ids=match_ids, 
+                puuid=puuid,
                 error=None
             )
         else:
             return render_template('games.html', username=full_username, error="Account not found.")
-            
     except Exception as e:
         return render_template('games.html', username=full_username, error=f"System Error: {str(e)}")
 
-# --- ROUTE 3: Background API for Pagination ---
-@app.route('/api/fetch_matches')
-def fetch_matches_api():
-    # JavaScript will call this: /api/fetch_matches?puuid=...&start=100
+@app.route('/api/match_details/<match_id>')
+def match_details(match_id):
     puuid = request.args.get('puuid')
-    start = int(request.args.get('start', 0))
-    count = int(request.args.get('count', 100))
-    
     if not puuid:
         return jsonify({"error": "Missing PUUID"}), 400
-        
-    # Fetch the next batch
-    new_games = riot_api.get_epic_matches(puuid, start=start, count=count)
-    print(new_games, flush=True)
-    
-    # Return pure JSON data
-    return jsonify(new_games)
+    data = riot_api.get_single_match_detail(match_id, puuid)
+    return jsonify(data)
 
 if __name__ == '__main__':
-    import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=5000)

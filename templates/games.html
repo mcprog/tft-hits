@@ -1,162 +1,124 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="mb-8">
-    <h2 class="text-2xl font-bold">Highlights for <span class="text-blue-400">{{ username }}</span></h2>
-    <p class="text-slate-400">Showing only games that hit our "Epic" criteria.</p>
+
+<div class="mb-8 flex justify-between items-end">
+    <div>
+        <h2 class="text-2xl font-bold">History for <span class="text-blue-400">{{ username }}</span></h2>
+        <p class="text-slate-400">Deep search: Analyzing 90 games for high-rolls.</p>
+    </div>
+    <div id="progress-container" class="text-right">
+        <p class="text-sm font-mono text-slate-500"><span id="processed-count">0</span>/90 scanned</p>
+        <div class="w-32 h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
+            <div id="progress-bar" class="h-full bg-blue-500 transition-all duration-300" style="width: 0%"></div>
+        </div>
+    </div>
 </div>
+
 {% if error %}
 <div class="bg-red-900/30 border-2 border-red-500 p-8 rounded-xl">
     <h3 class="text-xl font-bold text-red-400 mb-2">Search Error</h3>
-    <div class="bg-black/50 p-4 rounded font-mono text-sm text-red-200 overflow-x-auto">
-        {{ error }}
-    </div>
-    <a href="/" class="inline-block mt-4 text-slate-400 hover:text-white transition-colors underline">
-        &larr; Try a different username
-    </a>
+    <p class="text-red-200">{{ error }}</p>
+    <a href="/" class="inline-block mt-4 text-slate-400 hover:text-white underline">Try again</a>
 </div>
 {% else %}
-<!-- 1. Add a hidden input to store the PUUID from Flask -->
-{% if puuid %}
+
 <input type="hidden" id="user-puuid" value="{{ puuid }}">
-{% endif %}
-
-<!-- 2. Pagination Tabs (Hidden by default) -->
-<div id="pagination-controls" style="margin: 20px 0; display:none;">
-    <button onclick="showPage(1)" class="active">Page 1</button>
-    <button id="btn-page-2" onclick="showPage(2)" disabled>Page 2 (Loading...)</button>
-    <button id="btn-page-3" onclick="showPage(3)" disabled>Page 3 (Loading...)</button>
-</div>
-<div id="page-1" class="grid gap-6">
-    {% for game in games %}
-    <div class="bg-slate-800 p-6 rounded-xl border-l-4 border-yellow-500">
-        <div class="flex justify-between items-start">
-            <div>
-                <span class="text-sm font-mono text-slate-400 uppercase">Match ID: {{ game.match_id }}</span>
-                <p class="text-xs text-slate-500 italic">{{ game.readable_date }}</p>
-                <h3 class="text-xl font-bold mt-1">Placement: #{{ game.placement }}</h3>
+<div id="games-container" class="grid gap-4" data-match-ids='{{ match_ids | tojson }}'>
+    {% for mid in match_ids %}
+    <div id="match-{{ mid }}" class="match-placeholder bg-slate-800 p-6 rounded-xl border border-slate-700 animate-pulse">
+        <div class="flex justify-between items-center">
+            <div class="space-y-3 w-full">
+                <div class="h-4 bg-slate-700 rounded w-1/4"></div>
+                <div class="h-6 bg-slate-700 rounded w-1/2"></div>
             </div>
-            <div class="flex gap-2">
-                {% if game.has_prismatic %}
-                <span class="bg-purple-900 text-purple-200 px-3 py-1 rounded-full text-xs font-bold">
-                    PRISMATIC {{ game.prismatic_name | upper }}
-                </span>
-                {% endif %}
-                {% if game.has_high_cost_3star %}
-                <span class="bg-yellow-900 text-yellow-200 px-3 py-1 rounded-full text-xs font-bold">
-                    3-STAR 4/5 COST
-                </span>
-                {% endif %}
-            </div>
+            <div class="h-10 w-10 bg-slate-700 rounded-full"></div>
         </div>
-        <div class="mt-4 flex flex-wrap gap-3">
-            {% for unit in game.all_units %}
-            <div class="text-center w-16"> 
-                <!-- Unit Icon with Image -->
-                <div class="w-16 h-16 bg-slate-700 rounded-lg flex items-center justify-center border-2 overflow-hidden
-                    {% if unit.tier >= 3 %}border-yellow-500{% else %}border-slate-600{% endif %}">
-                    
-                    <img src="{{ unit.image_url }}" 
-                        alt="{{ unit.character_id }}" 
-                        class="w-full h-full object-cover">
-                </div>
-                
-                <!-- DISPLAY UNIT NAME BELOW ICON -->
-                <span class="text-[10px] font-bold text-slate-200 block mt-1 truncate">
-                    {{ unit.character_id }}
-                </span>
-
-                <!-- Star Level Display -->
-                <span class="text-[10px] block leading-tight">
-                    {% if unit.tier == 4 %}⭐⭐⭐⭐
-                    {% elif unit.tier == 3 %}⭐⭐⭐
-                    {% elif unit.tier == 2 %}⭐⭐
-                    {% else %}⭐{% endif %}
-                </span>
-            </div>
-            {% endfor %}
-        </div>
-
-    </div>
-    {% else %}
-    <div class="text-center py-20 bg-slate-800 rounded-xl">
-        <p class="text-slate-400 italic">No games found meeting the criteria in your last 20 matches.</p>
     </div>
     {% endfor %}
 </div>
-<div id="page-2" class="game-page" style="display:none;"></div>
-<div id="page-3" class="game-page" style="display:none;"></div>
+
+<div id="no-results" class="hidden text-center py-12">
+    <p class="text-slate-500 text-lg">No epic matches found in recent history.</p>
+</div>
+
 <script>
-// 1. Helper function to create a delay
-const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const puuid = document.getElementById('user-puuid').value;
+const container = document.getElementById('games-container');
+// Parse the data attribute. VS Code will no longer complain about this line.
+const matchIds = JSON.parse(container.getAttribute('data-match-ids'));
 
-async function loadBackgroundPages() {
-    const puuid = document.getElementById('user-puuid')?.value;
-    if (!puuid) return;
+let epicCount = 0;
+let processedCount = 0;
 
-    // Show the tab controls immediately
-    document.getElementById('pagination-controls').style.display = 'block';
-
-    // --- STEP 1: Wait 5 seconds after initial load ---
-    console.log("Waiting 5s before fetching Page 2...");
-    await wait(5000);
-
-    // --- STEP 2: Fetch Page 2 ---
-    await fetchAndRender(puuid, 100, 'page-2', 'btn-page-2');
-
-    // --- STEP 3: Wait another 5 seconds ---
-    console.log("Waiting 5s before fetching Page 3...");
-    await wait(5000);
-
-    // --- STEP 4: Fetch Page 3 ---
-    await fetchAndRender(puuid, 200, 'page-3', 'btn-page-3');
+function updateProgress() {
+    processedCount++;
+    const percent = (processedCount / matchIds.length) * 100;
+    document.getElementById('processed-count').innerText = processedCount;
+    document.getElementById('progress-bar').style.width = `${percent}%`;
+    
+    if (processedCount === matchIds.length && epicCount === 0) {
+        document.getElementById('no-results').classList.remove('hidden');
+    }
 }
 
-async function fetchAndRender(puuid, start, containerId, btnId) {
+async function fetchMatch(matchId) {
     try {
-        const response = await fetch(`/api/fetch_matches?puuid=${puuid}&start=${start}&count=100`);
+        const response = await fetch(`/api/match_details/${matchId}?puuid=${puuid}`);
         const data = await response.json();
-        
-        renderGames(data, containerId);
-        
-        const btn = document.getElementById(btnId);
-        if (btn) {
-            btn.innerText = btnId.replace('btn-page-', 'Page '); // e.g., "Page 2"
-            btn.disabled = false;
+        const element = document.getElementById(`match-${matchId}`);
+
+        if (data && data.is_epic) {
+            epicCount++;
+            element.classList.remove('animate-pulse');
+            element.innerHTML = `
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <p class="text-sm text-slate-400">${data.readable_date}</p>
+                        <h3 class="text-xl font-bold">Rank: <span class="text-blue-400">#${data.placement}</span></h3>
+                        <div class="flex gap-2 mt-2">
+                            ${data.has_prismatic ? `<span class="bg-purple-900/50 text-purple-300 px-3 py-1 rounded-full text-xs font-bold border border-purple-500">Prismatic: ${data.prismatic_name}</span>` : ''}
+                            ${data.has_high_cost_3star ? `<span class="bg-yellow-900/50 text-yellow-300 px-3 py-1 rounded-full text-xs font-bold border border-yellow-500">Gold 3-Star: ${data.high_cost_units.join(', ')}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="flex -space-x-2 overflow-hidden">
+                        ${data.units.slice(0, 8).map(u => `
+                            <img src="${u.image_url}" class="inline-block h-10 w-10 rounded-full ring-2 ring-slate-800" title="${u.character_id}">
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        } else {
+            if (element) element.remove();
         }
     } catch (err) {
-        console.error(`Error fetching ${containerId}:`, err);
-        document.getElementById(containerId).innerHTML = "<p>Error loading data.</p>";
+        console.error("Error loading match:", matchId, err);
+        const element = document.getElementById(`match-${matchId}`);
+        if (element) element.remove();
+    } finally {
+        updateProgress();
     }
 }
 
-function renderGames(games, containerId) {
-    const container = document.getElementById(containerId);
-    if (!games || games.length === 0) {
-        container.innerHTML = "<p>No epic games found in this batch.</p>";
-        return;
+async function processQueue(ids, concurrency) {
+    const queue = [...ids];
+    const workers = [];
+
+    for (let i = 0; i < concurrency; i++) {
+        workers.push((async () => {
+            while (queue.length > 0) {
+                const id = queue.shift();
+                await fetchMatch(id);
+                // 100ms delay helps spread out the burst to avoid 429s
+                await new Promise(r => setTimeout(r, 100));
+            }
+        })());
     }
-    
-    let html = "";
-    games.forEach(game => {
-        // Build your game card HTML here. Example:
-        html += `<div class="game-card" style="border:1px solid #444; padding:10px; margin-bottom:10px;"> 
-                    <h3>${game.readable_date} - Placement: ${game.placement}</h3>
-                    ${game.has_prismatic ? `<span style="color:gold">Prismatic: ${game.prismatic_name}</span>` : ''}
-                    ${game.has_high_cost_3star ? `<span style="color:cyan">3-Star 4/5 Cost</span>` : ''}
-                 </div>`;
-    });
-    container.innerHTML = html;
+    await Promise.all(workers);
 }
 
-function showPage(pageNum) {
-    document.querySelectorAll('.game-page').forEach(el => el.style.display = 'none');
-    document.getElementById(`page-${pageNum}`).style.display = 'block';
-}
-
-// Start the delayed loading process
-loadBackgroundPages();
+// Start with 5 workers for steady loading without slamming the burst limit
+processQueue(matchIds, 5);
 </script>
 
 {% endif %}
-
 {% endblock %}
