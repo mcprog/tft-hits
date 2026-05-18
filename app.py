@@ -1,8 +1,27 @@
 from flask import Flask, render_template, request, jsonify
 import riot_api
-import json
 
 app = Flask(__name__)
+
+@app.before_request
+def restrict_regions():
+    # Bypass regional checking for static files or if the endpoint is not resolved
+    if not request.endpoint or request.endpoint == 'static':
+        return None
+        
+    # Explicitly bypass our manual error page route so it can be previewed/tested
+    if request.endpoint == 'manual_region_error':
+        return None
+        
+    # Railway forwards public requests through an edge proxy that injects the CF-IPCountry header
+    country = request.headers.get('CF-IPCountry', '').upper()
+    
+    # Allowed North American country codes
+    allowed_countries = ['US', 'CA', 'MX']
+    
+    # Block the request if a country code is detected and it is outside North America
+    if country and country not in allowed_countries:
+        return render_template('region_error.html'), 403
 
 @app.route('/')
 def index():
@@ -23,7 +42,6 @@ def games():
         
         if account_data:
             puuid = account_data.get('puuid')
-            # Request 90 match IDs to stay within the 100/2min limit
             match_ids = riot_api.get_match_ids(puuid, count=90)
             
             return render_template(
@@ -52,10 +70,13 @@ def get_more_ids():
     start = int(request.args.get('start', 0))
     if not puuid:
         return jsonify({"error": "Missing PUUID"}), 400
-    
-    # Fetch the next batch of 90
     match_ids = riot_api.get_match_ids(puuid, count=90, start=start)
     return jsonify(match_ids)
+
+# Dedicated debugging route to view the region restriction page manually
+@app.route('/region_error.html')
+def manual_region_error():
+    return render_template('region_error.html')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

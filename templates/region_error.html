@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="max-w-md mx-auto mt-20 px-4 text-center">
+    <div class="bg-slate-800 p-8 rounded-2xl shadow-xl border border-slate-700">
+        <div class="w-16 h-16 bg-amber-950/40 border border-amber-500/30 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg class="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+        </div>
+        
+        <h2 class="text-2xl font-black mb-4 bg-gradient-to-r from-red-400 to-amber-500 bg-clip-text text-transparent">
+            Service Unavailable
+        </h2>
+        
+        <p class="text-slate-300 leading-relaxed mb-6 text-sm">
+            This tracking service is restricted to North American regions. Access is not available from your geographic location at this time.
+        </p>
+        
+        <div class="h-px bg-slate-700/50 w-full mb-6"></div>
+        
+        <p class="text-xs text-slate-500 font-mono">
+            Supported Regions: US, CA, MX
+        </p>
+    </div>
+</div>
+{% endblock %}
