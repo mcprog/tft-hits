@@ -1,27 +1,34 @@
 {% extends "layout.html" %}
 {% block content %}
 
-<div class="mb-8 flex justify-between items-end">
+{% if error %}
+<div class="bg-red-900/30 border-2 border-red-500 p-8 rounded-xl max-w-2xl mx-auto mt-8">
+    <h3 class="text-xl font-bold text-red-400 mb-2">Search Error</h3>
+    <p class="text-red-200 mb-4">{{ error }}</p>
+    <a href="/" class="inline-block text-blue-400 hover:text-blue-300 underline font-medium">
+        Return to search
+    </a>
+</div>
+{% else %}
+
+<div class="sticky top-0 bg-slate-900 pt-4 pb-6 mb-8 flex justify-between items-end z-50 border-b border-slate-800/80 backdrop-blur-sm">
     <div>
         <h2 class="text-2xl font-bold">History for <span class="text-blue-400">{{ username }}</span></h2>
-        <p class="text-slate-400" id="search-description">Analyzing matches for high-rolls.</p>
+        <p id="search-status" class="text-slate-400 text-sm">Deep search: Analyzing matches for Set 17 high-rolls.</p>
     </div>
     <div id="progress-container" class="text-right">
-        <p class="text-sm font-mono text-slate-500"><span id="processed-count">0</span>/<span id="total-to-scan">90</span> scanned</p>
+        <p id="progress-text" class="text-sm font-mono text-slate-400"><span id="processed-count">0</span>/<span id="total-to-scan">90</span> scanned</p>
         <div class="w-32 h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
             <div id="progress-bar" class="h-full bg-blue-500 transition-all duration-300" style="width: 0%"></div>
         </div>
     </div>
 </div>
 
-{% if error %}
-{% else %}
-
 <input type="hidden" id="user-puuid" value="{{ puuid }}">
 <div id="games-container" class="grid gap-6" data-match-ids='{{ match_ids | tojson }}'>
     {% for mid in match_ids %}
     <div id="match-{{ mid }}" class="match-placeholder bg-slate-800 p-6 rounded-xl border border-slate-700 animate-pulse">
-        <div class="h-20"></div>
+        <div class="h-24"></div>
     </div>
     {% endfor %}
 </div>
@@ -31,8 +38,7 @@
 </div>
 
 <div class="mt-12 mb-20 text-center">
-    <button id="load-more-btn" 
-            class="px-8 py-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-700 rounded-xl font-bold transition-all">
+    <button id="load-more-btn" class="px-8 py-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-700 rounded-xl font-bold transition-all">
         Load Another 90 Games
     </button>
 </div>
@@ -41,12 +47,18 @@
 const puuid = document.getElementById('user-puuid').value;
 const container = document.getElementById('games-container');
 const loadMoreBtn = document.getElementById('load-more-btn');
-const initialMatchIds = JSON.parse(container.getAttribute('data-match-ids'));
 
 let currentOffset = 90;
 let epicCount = 0;
 let processedCount = 0;
-let totalInBatch = initialMatchIds.length;
+let totalInBatch = JSON.parse(container.getAttribute('data-match-ids')).length;
+
+// Helper to translate systemic string IDs to in-game display titles
+const formatName = (name) => {
+    if (name === 'Galio') return 'The Mighty Mech';
+    if (name === 'IvernMinion') return 'Meepsie';
+    return name;
+};
 
 function updateProgress() {
     processedCount++;
@@ -57,9 +69,12 @@ function updateProgress() {
     if (processedCount === totalInBatch) {
         loadMoreBtn.disabled = false;
         loadMoreBtn.innerText = "Load Another 90 Games";
-        if (epicCount === 0) {
-            document.getElementById('no-results').classList.remove('hidden');
-        }
+        
+        // Update the status header to reflect the completed scan process
+        document.getElementById('search-status').innerText = "Analysis complete for Set 17 high-rolls.";
+        document.getElementById('progress-text').innerHTML = `Scan complete: <span class="text-blue-400 font-bold">${epicCount}</span> high-rolls found`;
+        
+        if (epicCount === 0) document.getElementById('no-results').classList.remove('hidden');
     }
 }
 
@@ -73,9 +88,6 @@ async function fetchMatch(matchId) {
             epicCount++;
             element.classList.remove('animate-pulse');
             
-            // Name mapping helper
-            const formatName = (name) => name === 'Galio' ? 'The Mighty Mech' : name;
-
             const getStars = (tier) => {
                 let s = '';
                 const c = tier === 3 ? 'text-yellow-400' : (tier === 2 ? 'text-slate-300' : 'text-slate-600');
@@ -104,10 +116,7 @@ async function fetchMatch(matchId) {
                         ${data.units.map(u => `
                             <div class="flex flex-col items-center">
                                 <div class="flex h-3 mb-1 items-center justify-center">${getStars(u.tier)}</div>
-                                <img src="${u.image_url}" 
-                                    onerror="this.style.display='none'"
-                                    class="h-12 w-12 rounded bg-slate-900 border ${u.tier === 3 ? 'border-yellow-500' : 'border-slate-700'}" 
-                                    alt="${u.character_id}">
+                                <img src="${u.image_url}" onerror="this.style.display='none'" class="h-12 w-12 rounded bg-slate-900 border ${u.tier === 3 ? 'border-yellow-500' : 'border-slate-700'}" alt="${u.character_id}">
                                 <p class="text-[10px] mt-1 text-slate-400 font-medium truncate w-12 text-center capitalize">${formatName(u.character_id)}</p>
                             </div>
                         `).join('')}
@@ -118,7 +127,7 @@ async function fetchMatch(matchId) {
             if (element) element.remove();
         }
     } catch (err) {
-        console.error("Error:", matchId, err);
+        console.error("Error loading match:", err);
         const element = document.getElementById(`match-${matchId}`);
         if (element) element.remove();
     } finally {
@@ -148,47 +157,34 @@ async function processQueue(ids, concurrency) {
 
 loadMoreBtn.addEventListener('click', async () => {
     loadMoreBtn.disabled = true;
-    loadMoreBtn.innerText = "Fetching Game IDs...";
-
     try {
         const res = await fetch(`/api/get_more_ids?puuid=${puuid}&start=${currentOffset}`);
         const newIds = await res.json();
+        if (newIds.length === 0) { loadMoreBtn.innerText = "No More Matches"; return; }
 
-        if (newIds.length === 0) {
-            loadMoreBtn.innerText = "No More Matches Found";
-            return;
-        }
-
-        // Reset progress trackers for the new batch
-        processedCount = 0;
-        epicCount = 0;
-        totalInBatch = newIds.length;
+        // Reset text values and internal counts back to loading state for subsequent batch runs
+        processedCount = 0; 
+        epicCount = 0; 
+        totalInBatch = newIds.length; 
         currentOffset += 90;
-        
-        document.getElementById('total-to-scan').innerText = totalInBatch;
-        document.getElementById('processed-count').innerText = "0";
+
+        document.getElementById('search-status').innerText = "Deep search: Analyzing matches for Set 17 high-rolls.";
+        document.getElementById('progress-text').innerHTML = `<span id="processed-count">0</span>/<span id="total-to-scan">${totalInBatch}</span> scanned`;
         document.getElementById('progress-bar').style.width = "0%";
 
-        // Create new placeholders
         newIds.forEach(mid => {
             const div = document.createElement('div');
             div.id = `match-${mid}`;
             div.className = "match-placeholder bg-slate-800 p-6 rounded-xl border border-slate-700 animate-pulse";
-            div.innerHTML = '<div class="h-20"></div>';
+            div.innerHTML = '<div class="h-24"></div>';
             container.appendChild(div);
         });
 
-        // Process the new IDs
         processQueue(newIds, 5);
-    } catch (err) {
-        console.error("Error loading more:", err);
-        loadMoreBtn.disabled = false;
-        loadMoreBtn.innerText = "Error - Try Again";
-    }
+    } catch (err) { loadMoreBtn.disabled = false; }
 });
 
-// Initial load
-processQueue(initialMatchIds, 5);
+processQueue(JSON.parse(container.getAttribute('data-match-ids')), 5);
 </script>
 
 {% endif %}

@@ -1,25 +1,45 @@
 # TFT Set 17 Epic Match Tracker
 
 ## Purpose
-This web application automatically filters a player's Teamfight Tactics match history to find high-roll games from Set 17 (Space Gods). It specifically identifies matches where the user achieved a Prismatic Trait or a 3-star 4-cost or 5-cost unit. The app utilizes asynchronous loading to bypass Riot API rate limits and provide a fast user experience.
+This web application automatically filters a player's Teamfight Tactics match history to find high-roll games from Set 17 (Space Gods). It identifies matches where the user achieved a Prismatic Trait or a 3-star 4-cost or 5-cost unit.
 
 ## Tech Stack
 * Backend: Python, Flask
 * API Integration: Riot Games API
 * Frontend: HTML, JavaScript, Tailwind CSS
-* Containerization: Docker
+* Testing: pytest, pytest-playwright
+* Containerization: Docker (Multi-stage build)
 
-## Setup and Local Run
-1. Create a .env file in the root directory.
-2. Add your Riot API key to the file: RIOT_API_KEY=your_key_here
-3. Install dependencies:
-   pip install -r requirements.txt
-4. Start the server:
-   python app.py
-5. Access the app at http://localhost:5000
+## Production Environment
 
-## Docker Build and Run
-1. Build the image:
-   docker build -t tft-tracker .
-2. Run the container using the .env file:
-   docker run -p 5000:5000 --env-file .env tft-tracker
+### Build Production Image
+By default, building the Dockerfile builds the full clean production stage.
+```bash
+docker build -t tft-tracker .
+```
+
+### Run Production Container
+Ensure you have a .env file containing your RIOT_API_KEY in the root directory.
+```bash
+docker run -p 5000:5000 --env-file .env tft-tracker
+```
+
+## Development and Testing Environment
+
+### Build Dev Environment Image
+To build the environment with development tools, test frameworks, and headless browsers, target the test stage:
+```bash
+docker build --target test -t tft-tracker-dev .
+```
+
+### Run Automated Tests
+This executes the complete unit and end-to-end test suites using pytest and Playwright:
+```bash
+docker run --rm tft-tracker-dev
+```
+
+### Run Web Server from Dev Image
+To run the active web server within the development layer for debugging or feature testing:
+```bash
+docker run --rm -p 5000:5000 --env-file .env tft-tracker-dev python app.py
+```
