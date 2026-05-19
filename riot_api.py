@@ -14,10 +14,7 @@ VALID_PRISMATICS = {
     "TFT17_Trait_DarkStar": 9,
     "TFT17_Trait_Meeple": 10,
     "TFT17_Trait_SpaceGroove": 10,
-    "TFT17_Trait_Anima": 6,
-    "TFT17_Trait_Mecha": 6,
-    "TFT17_Trait_Shepherd": 7,
-    "TFT17_Trait_Stargazer": 7
+    "TFT17_Trait_Stargazer": 11
 }
 
 # Strict mapping of standard game modes allowed to process
