@@ -55,6 +55,20 @@ def test_name_formatting():
     assert format_name('Gnar') == 'Gnar'
     assert format_name('Lux') == 'Lux'
 
+    assert format_name('') == ''
+    assert format_name('UnknownChampion') == 'UnknownChampion'
+
+def test_get_stars():
+    get_stars = load_js_function('getStars')
+
+    raw_html = get_stars(3)
+    assert raw_html.count('★') == 3
+    raw_html = get_stars(2)
+    assert raw_html.count('★') == 2
+    raw_html = get_stars(1)
+    assert raw_html.count('★') == 1
+    raw_html = get_stars(0)
+    assert raw_html.count('★') == 0
 
 
 def test_prismatic_thresholds():
