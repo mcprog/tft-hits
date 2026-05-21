@@ -15,7 +15,7 @@ COPY requirements-dev.txt requirements.txt ./
 RUN pip install --no-cache-dir -r requirements-dev.txt
 RUN playwright install --with-deps
 COPY . .
-CMD ["python", "-m", "pytest"]
+CMD ["python", "-m", "pytest", "--cov=."]
 
 # Stage 3: Clean Production environment for deployment
 FROM base AS production

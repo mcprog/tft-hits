@@ -1,7 +1,14 @@
 import pytest
 import os
 import js2py
-from riot_api import VALID_PRISMATICS
+from unittest.mock import patch, MagicMock
+from riot_api import (
+    VALID_PRISMATICS,
+    get_account,
+    get_match_ids,
+    get_single_match_detail,
+    make_request
+)
 
 def load_js_function(function_name):
     # Resolve absolute path to games.js inside the static assets directory
@@ -76,3 +83,88 @@ def test_prismatic_thresholds():
     assert VALID_PRISMATICS["TFT17_Trait_Meeple"] == 10
     assert VALID_PRISMATICS["TFT17_Trait_SpaceGroove"] == 10
     assert VALID_PRISMATICS["TFT17_Trait_Stargazer"] == 11
+
+@patch('riot_api.requests.get')
+def test_make_request_rate_limit(mock_get):
+    mock_429 = MagicMock()
+
+    mock_429.status_code = 429
+    mock_429.headers = {'Retry-After': '0'}
+    
+    mock_200 = MagicMock()
+    mock_200.status_code = 200
+    
+    mock_get.side_effect = [mock_429, mock_200]
+
+    response = make_request("http://dummy-url", {"X-Riot-Token": "test"})
+    assert response.status_code == 200
+    assert mock_get.call_count == 2
+
+@patch('riot_api.make_request')
+def test_get_account(mock_make_req):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"puuid": "mock-puuid-123"}
+    mock_make_req.return_value = mock_response
+
+    data = get_account("Dishsoap", "NA3")
+    assert data["puuid"] == "mock-puuid-123"
+    
+    # Case 2: Server failure or wrong tag
+    mock_response.status_code = 404
+    assert get_account("FakeUser", "0000") is None
+
+@patch('riot_api.make_request')
+def test_get_match_ids(mock_make_request):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = ["NA_1", "NA_2"]
+    mock_make_request.return_value = mock_response
+    
+    match_ids = get_match_ids("mock-puuid")
+    assert len(match_ids) == 2
+    assert match_ids[0] == "NA_1"
+
+@patch('riot_api.make_request')
+def test_get_single_match_detail_epic_prismatic(mock_make_request):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "info": {
+            "queue_id": 1100, # Ranked
+            "tft_set_number": 17,
+            "game_datetime": 1716300000000,
+            "participants": [{
+                "puuid": "player-1",
+                "placement": 1,
+                "traits": [{
+                    "name": "TFT17_Trait_DarkStar",
+                    "num_units": 9
+                }],
+                "units": []
+            }]
+        }
+    }
+    mock_make_request.return_value = mock_response
+    
+    result = get_single_match_detail("NA_1", "player-1")
+    assert result["is_epic"] is True
+    assert result["game_mode"] == "Ranked"
+    assert result["has_prismatic"] is True
+
+@patch('riot_api.make_request')
+def test_get_single_match_detail_excluded_mode(mock_make_request):
+    """Verify that unmapped queues (like Tocker's Trials) return False."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "info": {
+            "queue_id": 1190, # Tocker Trials standard mode
+            "tft_set_number": 17,
+            "participants": []
+        }
+    }
+    mock_make_request.return_value = mock_response
+    
+    result = get_single_match_detail("NA_1", "player-1")
+    assert result["is_epic"] is False    
