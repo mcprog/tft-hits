@@ -43,3 +43,8 @@ To run the active web server within the development layer for debugging or featu
 ```bash
 docker run --rm -p 5000:5000 --env-file .env tft-tracker-dev python app.py
 ```
+
+# Testing Results
+
+[![Build Status](https://img.shields.io/badge/Build-Passing-success)](https://github.com/mcprog/tft-hits)
+[![Coverage Status](https://img.shields.io/badge/Coverage-72%25-success)](https://github.com/mcprog/tft-hits)
