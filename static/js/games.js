@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </p>
                                 <h3 class="text-2xl font-black italic">Place: <span class="text-blue-400">#${data.placement}</span></h3>
                                 <div class="flex flex-wrap gap-2 mt-3">
-                                    ${data.has_prismatic ? `<span class="bg-purple-900/40 text-purple-300 px-3 py-1 rounded border border-purple-500/50 text-xs font-bold uppercase tracking-tight">${data.prismatic_name}</span>` : ''}
+                                    ${data.has_prismatic ? `<span class="bg-purple-900/40 text-purple-300 px-3 py-1 rounded border border-purple-500/50 text-xs font-bold uppercase tracking-tight">PRISMATIC ${data.prismatic_name}</span>` : ''}
                                     ${data.has_high_cost_3star ? data.high_cost_units.map(n => `
                                         <span class="bg-yellow-900/40 text-yellow-300 px-3 py-1 rounded border border-yellow-500/50 text-xs font-bold uppercase tracking-tight">3* ${formatName(n)}</span>
                                     `).join('') : ''}

@@ -38,7 +38,8 @@ REGION_TO_ROUTE = {
     "RU": "europe",
     "KR": "asia",
     "JP": "asia",
-    "OCE": "sea"
+    "OCE": "sea",
+    "VN": "sea"
 }
 
 # Maps Match ID platform prefixes directly to their corresponding regional servers
@@ -58,16 +59,14 @@ def get_route_for_region(region):
 
 def make_request(url, headers, max_retries=3):
     """Executes HTTP requests with region-specific, independent rate limit isolation and clean logging."""
-    # Identify which regional sub-domain this request is targeting
     route = "americas"
-    for r in list(REGION_TO_ROUTE.values()) + ["sea"]:
+    for r in list(REGION_TO_ROUTE.values()):
         if f"//{r}." in url:
             route = r
             break
 
     for attempt in range(max_retries):
         current_time = time.time()
-        # Log when a request thread stalls due to an active cooldown loop
         if route in ROUTE_BACKOFFS and current_time < ROUTE_BACKOFFS[route]:
             sleep_duration = ROUTE_BACKOFFS[route] - current_time
             print(f"[RATE LIMIT] Route '{route}' is cooling down. Pausing for {sleep_duration:.2f}s...", flush=True)
@@ -78,7 +77,6 @@ def make_request(url, headers, max_retries=3):
         except Exception:
             return None
         
-        # Log when a raw 429 payload hits from the Riot edge server
         if response.status_code == 429:
             retry_time = int(response.headers.get('Retry-After', 10))
             print(f"[RATE LIMIT] 429 Hit on route '{route}'. Backing off for {retry_time}s.", flush=True)
@@ -92,12 +90,9 @@ def make_request(url, headers, max_retries=3):
 
 def get_account(name, tag, region="NA"):
     """Fetches account PUUID data and logs production search details."""
-    # Production tracking log entry point
     print(f"[SEARCH] Player searched: {name}#{tag} in region: {region.upper()}", flush=True)
     
     route = get_route_for_region(region)
-    
-    # Account-V1 proxy fallback for SEA/OCE queries
     if route == "sea":
         route = "asia"
         
@@ -136,15 +131,12 @@ def get_single_match_detail(match_id, target_puuid, region="NA"):
     info = match_data.get("info", {})
     queue_id = info.get("queue_id")
     
-    # Filter out unranked modes, alternate sets, or custom experimental queues
     if info.get("tft_set_number") != 17 or queue_id in EXCLUDED_QUEUES:
         return {"is_epic": False}
 
-    # Ensure queue is in our allowed map
     if queue_id not in QUEUE_MAP:
         return {"is_epic": False}
 
-    # Find target participant data records
     participants = info.get('participants', [])
     participant = next((p for p in participants if p.get('puuid') == target_puuid), None)
     if not participant:
@@ -158,7 +150,14 @@ def get_single_match_detail(match_id, target_puuid, region="NA"):
             active_p = t_name.replace("TFT17_Trait_", "")
             break
 
-    # 2. Epic 3-Star Check (Strictly exclude summons as an epic high-roll trigger)
+    # Bugfix Override: Check for Bardfollower summon data components.
+    if not active_p:
+        for u in participant.get('units', []):
+            if "bardfollower" in u.get('character_id', '').lower():
+                active_p = "Meeple"
+                break
+
+    # 2. Epic 3-Star Check (Strictly exclude generic sub-summons as high-roll triggers)
     valid_3stars = [
         u for u in participant.get('units', []) 
         if u['tier'] == 3 and u['rarity'] >= 4 
@@ -176,7 +175,7 @@ def get_single_match_detail(match_id, target_puuid, region="NA"):
                 "character_id": u['character_id'].split('_')[-1],
                 "tier": u['tier'],
                 "image_url": img_url,
-                "is_summon": "summon" in raw_id
+                "is_summon": "summon" in raw_id or "follower" in raw_id
             })
 
         return {
