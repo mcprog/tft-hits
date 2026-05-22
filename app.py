@@ -4,73 +4,45 @@ import requests
 import riot_api
 
 app = Flask(__name__)
-# Encrypts session cookies. Pulls from Railway variables or falls back locally
 app.secret_key = os.environ.get("SECRET_KEY", "tft-tracker-default-dev-key")
+
+# Centralized list of tracked players to dynamically build the lookup grid panels
+QUICK_LOOKUPS = {
+    "NA": [
+        {"display_name": "Dishsoap", "riot_id": "ACAD Dishsoap#NA3"},
+        {"display_name": "setsuko", "riot_id": "VIT setsuko#NA2"},
+        {"display_name": "emillywang", "riot_id": "CTG emilyywang#1111"},
+        {"display_name": "k3soju", "riot_id": "VIT k3soju#000"}
+    ],
+    "EUW": [
+        {"display_name": "Sologesang", "riot_id": "Sologesang#EUW"},
+        {"display_name": "Whyyoumadpro", "riot_id": "whyyoumadpro#EUW"},
+        {"display_name": "ZBROJS0N", "riot_id": "ZBROJS0N#EUW"}
+    ],
+    "EUNE": [
+        {"display_name": "Demacian Raptor", "riot_id": "Demacian Raptor#JAZZ"},
+        {"display_name": "ZeulEnache", "riot_id": "ZeulEnache#8652"},
+        {"display_name": "bukajeek", "riot_id": "bukajeek#2029"}
+    ],
+    "VN": [
+        {"display_name": "YBY1", "riot_id": "YBY1#0615"},
+        {"display_name": "A Long", "riot_id": "A Long#1102"}
+    ],
+    "KR": [
+        {"display_name": "SanChess", "riot_id": "SanChess#king"},
+        {"display_name": "Kanata", "riot_id": "Kanata#TFT"},
+        {"display_name": "Souly", "riot_id": "Souly#KR2"}
+    ]
+}
 
 @app.before_request
 def restrict_regions():
-    # REGION LOCK DISABLED FOR NOW
-    # Remove or comment out this return line when you are ready to re-enforce region locking live.
     return None
-
-    # Bypass regional checking for static assets or unresolved routes
-    if not request.endpoint or request.endpoint == 'static':
-        return None
-        
-    # Bypass checks for the manual error page and Riot's verification crawler
-    if request.endpoint in ['manual_region_error', 'serve_riot_txt']:
-        return None
-
-    # 1. Session Cache Check: If we already verified this user, use the saved result
-    if 'is_allowed_region' in session:
-        if not session['is_allowed_region']:
-            return render_template('region_error.html'), 403
-        return None
-
-    allowed_countries = ['US', 'CA', 'MX']
-
-    # 2. Cloudflare Ingress Fallback: Check if traffic comes through a custom proxied domain
-    cloudflare_country = request.headers.get('CF-IPCountry', '').upper()
-    if cloudflare_country:
-        is_allowed = cloudflare_country in allowed_countries
-        session['is_allowed_region'] = is_allowed
-        if not is_allowed:
-            return render_template('region_error.html'), 403
-        return None
-
-    # 3. Default Railway Ingress: Extract the client IP from the routing proxy chain
-    ip_header = request.headers.get('X-Forwarded-For', '')
-    client_ip = ip_header.split(',')[0].strip() if ip_header else request.remote_addr
-
-    # Safeguard: Do not isolate or block local development loopbacks
-    if not client_ip or client_ip in ['127.0.0.1', 'localhost', '::1']:
-        session['is_allowed_region'] = True
-        return None
-
-    # 4. Live API Geolocation Verification
-    try:
-        geo_response = requests.get(f"http://ip-api.com/json/{client_ip}", timeout=2)
-        if geo_response.status_code == 200:
-            geo_data = geo_response.json()
-            
-            if geo_data.get('status') == 'fail':
-                session['is_allowed_region'] = True
-                return None
-                
-            resolved_country = geo_data.get('countryCode', '').upper()
-            is_allowed = resolved_country in allowed_countries
-            session['is_allowed_region'] = is_allowed
-            
-            if not is_allowed:
-                return render_template('region_error.html'), 403
-        else:
-            return None
-    except Exception:
-        return None
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # Pass the data map directly to the index template launcher context
+    return render_template('index.html', quick_lookups=QUICK_LOOKUPS)
 
 @app.route('/games', methods=['GET', 'POST'])
 def games():
@@ -78,16 +50,20 @@ def games():
         return render_template('games.html', error=None, username=None)
     
     full_username = request.form.get('username', '').strip()
+    selected_region = request.form.get('region', 'NA').upper()
+    
+    session['selected_region'] = selected_region
+    
     if not full_username or '#' not in full_username:
         return render_template('games.html', username=full_username, error="Invalid format. Use Name#Tag.")
     
     try:
         name, tag = full_username.split('#', 1)
-        account_data = riot_api.get_account(name.strip(), tag.strip())
+        account_data = riot_api.get_account(name.strip(), tag.strip(), region=selected_region)
         
         if account_data:
             puuid = account_data.get('puuid')
-            match_ids = riot_api.get_match_ids(puuid, count=90)
+            match_ids = riot_api.get_match_ids(puuid, count=90, region=selected_region)
             
             return render_template(
                 'games.html', 
@@ -97,7 +73,7 @@ def games():
                 error=None
             )
         else:
-            return render_template('games.html', username=full_username, error="Account not found.")
+            return render_template('games.html', username=full_username, error=f"Account not found in region: {selected_region}")
     except Exception as e:
         return render_template('games.html', username=full_username, error=f"System Error: {str(e)}")
 
@@ -106,7 +82,9 @@ def match_details(match_id):
     puuid = request.args.get('puuid')
     if not puuid:
         return jsonify({"error": "Missing PUUID"}), 400
-    data = riot_api.get_single_match_detail(match_id, puuid)
+    
+    active_region = session.get('selected_region', 'NA')
+    data = riot_api.get_single_match_detail(match_id, puuid, region=active_region)
     return jsonify(data)
 
 @app.route('/api/get_more_ids')
@@ -115,7 +93,9 @@ def get_more_ids():
     start = int(request.args.get('start', 0))
     if not puuid:
         return jsonify({"error": "Missing PUUID"}), 400
-    match_ids = riot_api.get_match_ids(puuid, count=90, start=start)
+        
+    active_region = session.get('selected_region', 'NA')
+    match_ids = riot_api.get_match_ids(puuid, count=90, start=start, region=active_region)
     return jsonify(match_ids)
 
 @app.route('/region_error.html')

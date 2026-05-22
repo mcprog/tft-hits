@@ -6,8 +6,6 @@ from datetime import datetime
 
 load_dotenv()
 API_KEY = os.environ.get("RIOT_API_KEY")
-REGION = "americas"
-BASE_URL = f"https://{REGION}.api.riotgames.com"
 
 # Set 17 Prismatic Trait Thresholds
 VALID_PRISMATICS = {
@@ -28,61 +26,136 @@ QUEUE_MAP = {
 # Explicitly exclude Hyper Roll, Choncc's Treasure, Set Revivals, and Tocker's Trials variants
 EXCLUDED_QUEUES = [1130, 1170, 1180, 1190, 1200]
 
-def debug(string):
-    print(string, flush=True)
+# Maps frontend dropdown options to Riot's regional routing endpoints
+REGION_TO_ROUTE = {
+    "NA": "americas",
+    "BR": "americas",
+    "LAN": "americas",
+    "LAS": "americas",
+    "EUW": "europe",
+    "EUNE": "europe",
+    "TR": "europe",
+    "RU": "europe",
+    "KR": "asia",
+    "JP": "asia",
+    "OCE": "sea"
+}
+
+# Maps Match ID platform prefixes directly to their corresponding regional servers
+MATCH_PREFIX_TO_ROUTE = {
+    "NA1": "americas", "BR1": "americas", "LA1": "americas", "LA2": "americas",
+    "EUW1": "europe", "EUNE1": "europe", "TR1": "europe", "RU1": "europe",
+    "KR": "asia", "JP1": "asia",
+    "OC1": "sea", "PH2": "sea", "SG2": "sea", "TH2": "sea", "TW2": "sea", "VN2": "sea"
+}
+
+# Tracks independent rate limit backoff expirations per regional route
+ROUTE_BACKOFFS = {}
+
+def get_route_for_region(region):
+    """Returns the routing value tier for a given platform region code."""
+    return REGION_TO_ROUTE.get(region.upper(), "americas")
 
 def make_request(url, headers, max_retries=3):
+    """Executes HTTP requests with region-specific, independent rate limit isolation and clean logging."""
+    # Identify which regional sub-domain this request is targeting
+    route = "americas"
+    for r in list(REGION_TO_ROUTE.values()) + ["sea"]:
+        if f"//{r}." in url:
+            route = r
+            break
+
     for attempt in range(max_retries):
-        response = requests.get(url, headers=headers)
+        current_time = time.time()
+        # Log when a request thread stalls due to an active cooldown loop
+        if route in ROUTE_BACKOFFS and current_time < ROUTE_BACKOFFS[route]:
+            sleep_duration = ROUTE_BACKOFFS[route] - current_time
+            print(f"[RATE LIMIT] Route '{route}' is cooling down. Pausing for {sleep_duration:.2f}s...", flush=True)
+            time.sleep(sleep_duration)
+
+        try:
+            response = requests.get(url, headers=headers)
+        except Exception:
+            return None
+        
+        # Log when a raw 429 payload hits from the Riot edge server
         if response.status_code == 429:
             retry_time = int(response.headers.get('Retry-After', 10))
-            debug(f"[429] Rate Limit Hit. Sleeping for {retry_time}s...")
+            print(f"[RATE LIMIT] 429 Hit on route '{route}'. Backing off for {retry_time}s.", flush=True)
+            ROUTE_BACKOFFS[route] = time.time() + retry_time
             time.sleep(retry_time)
             continue
+            
         return response
-    return response
+        
+    return None
 
-def get_account(game_name, tag_line):
-    if not API_KEY:
-        return None
-    endpoint = f"{BASE_URL}/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
+def get_account(name, tag, region="NA"):
+    """Fetches account PUUID data and logs production search details."""
+    # Production tracking log entry point
+    print(f"[SEARCH] Player searched: {name}#{tag} in region: {region.upper()}", flush=True)
+    
+    route = get_route_for_region(region)
+    
+    # Account-V1 proxy fallback for SEA/OCE queries
+    if route == "sea":
+        route = "asia"
+        
+    url = f"https://{route}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{name}/{tag}"
     headers = {"X-Riot-Token": API_KEY}
-    res = make_request(endpoint, headers)
-    return res.json() if res.status_code == 200 else None
+    res = make_request(url, headers)
+    
+    if res and res.status_code == 200:
+        return res.json()
+    return None
 
-def get_match_ids(puuid, count=90, start=0):
-    if not API_KEY:
-        return []
-    endpoint = f"{BASE_URL}/tft/match/v1/matches/by-puuid/{puuid}/ids?start={start}&count={count}"
+def get_match_ids(puuid, count=20, start=0, region="NA"):
+    """Collects recent match IDs for a player within their regional cluster."""
+    route = get_route_for_region(region)
+    url = f"https://{route}.api.riotgames.com/tft/match/v1/matches/by-puuid/{puuid}/ids?start={start}&count={count}"
     headers = {"X-Riot-Token": API_KEY}
-    res = make_request(endpoint, headers)
-    return res.json() if res.status_code == 200 else []
+    res = make_request(url, headers)
+    
+    if res and res.status_code == 200:
+        return res.json()
+    return []
 
-def get_single_match_detail(match_id, puuid):
-    if not API_KEY:
-        return None
-    match_url = f"{BASE_URL}/tft/match/v1/matches/{match_id}"
+def get_single_match_detail(match_id, target_puuid, region="NA"):
+    """Processes match details against Set 17 high-roll performance criteria."""
+    prefix = match_id.split('_')[0].upper()
+    route = MATCH_PREFIX_TO_ROUTE.get(prefix, get_route_for_region(region))
+
+    url = f"https://{route}.api.riotgames.com/tft/match/v1/matches/{match_id}"
     headers = {"X-Riot-Token": API_KEY}
-    res = make_request(match_url, headers)
-    if res.status_code != 200: 
-        return None
+    res = make_request(url, headers)
+    
+    if not res or res.status_code != 200:
+        return {"is_epic": False}
 
-    info = res.json().get('info', {})
+    match_data = res.json()
+    info = match_data.get("info", {})
     queue_id = info.get("queue_id")
-
-    # Strict Filtration: Immediately drop any unmapped queue_id or explicitly excluded variant
-    if queue_id in EXCLUDED_QUEUES or queue_id not in QUEUE_MAP or info.get("tft_set_number") != 17:
+    
+    # Filter out unranked modes, alternate sets, or custom experimental queues
+    if info.get("tft_set_number") != 17 or queue_id in EXCLUDED_QUEUES:
         return {"is_epic": False}
 
-    participant = next((p for p in info.get('participants', []) if p['puuid'] == puuid), None)
-    if not participant: 
+    # Ensure queue is in our allowed map
+    if queue_id not in QUEUE_MAP:
         return {"is_epic": False}
 
-    # 1. Prismatic Check
+    # Find target participant data records
+    participants = info.get('participants', [])
+    participant = next((p for p in participants if p.get('puuid') == target_puuid), None)
+    if not participant:
+        return {"is_epic": False}
+
+    # 1. Prismatic Trait Check
     active_p = None
     for t in participant.get('traits', []):
-        if t['name'] in VALID_PRISMATICS and t['num_units'] >= VALID_PRISMATICS[t['name']]:
-            active_p = t['name'].replace("TFT17_Trait_", "")
+        t_name = t.get('name', '')
+        if t_name in VALID_PRISMATICS and t.get('num_units', 0) >= VALID_PRISMATICS[t_name]:
+            active_p = t_name.replace("TFT17_Trait_", "")
             break
 
     # 2. Epic 3-Star Check (Strictly exclude summons as an epic high-roll trigger)
@@ -118,4 +191,5 @@ def get_single_match_detail(match_id, puuid):
             "units": processed_units,
             "is_epic": True
         }
+
     return {"is_epic": False}
