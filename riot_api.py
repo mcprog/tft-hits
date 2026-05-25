@@ -169,7 +169,12 @@ def get_single_match_detail(match_id, target_puuid, region="NA"):
         processed_units = []
         for u in participant.get('units', []):
             raw_id = u.get('character_id', '').lower()
-            img_url = f"https://raw.communitydragon.org/latest/game/assets/ux/tft/championsplashes/patching/{raw_id}_teamplanner_splash.tft_set17.png"
+            
+            # Inject custom trait icon if the unit is a Meeple spawn
+            if "bardfollower" in raw_id:
+                img_url = "https://raw.communitydragon.org/latest/game/assets/ux/traiticons/trait_icon_17_astronaut.tft_set17.png"
+            else:
+                img_url = f"https://raw.communitydragon.org/latest/game/assets/ux/tft/championsplashes/patching/{raw_id}_teamplanner_splash.tft_set17.png"
             
             processed_units.append({
                 "character_id": u['character_id'].split('_')[-1],

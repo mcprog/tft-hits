@@ -1,10 +1,8 @@
-// Ensure the script runs after the DOM is fully parsed
 document.addEventListener('DOMContentLoaded', () => {
     const puuidElement = document.getElementById('user-puuid');
     const container = document.getElementById('games-container');
     const loadMoreBtn = document.getElementById('load-more-btn');
 
-    // If these elements don't exist (e.g., on an error page), exit cleanly
     if (!puuidElement || !container || !loadMoreBtn) return;
 
     const puuid = puuidElement.value;
@@ -13,17 +11,17 @@ document.addEventListener('DOMContentLoaded', () => {
     let processedCount = 0;
     let totalInBatch = JSON.parse(container.getAttribute('data-match-ids')).length;
 
-    // Refactored to classic ES5 function syntax so unit tests can parse it cleanly
     function formatName(name) {
         if (name === 'Galio') return 'The Mighty Mech';
         if (name === 'IvernMinion') return 'Meepsie';
+        if (name.toLowerCase() === 'bardfollower') return 'Meeplord';
         return name;
     }
 
-    // Refactored to classic ES5 function syntax so unit tests can parse it cleanly
+    // Updated to support 4-star teal coloring
     function getStars(tier) {
         var s = '';
-        var c = tier === 3 ? 'text-yellow-400' : (tier === 2 ? 'text-slate-300' : 'text-slate-600');
+        var c = tier >= 4 ? 'text-teal-400' : (tier === 3 ? 'text-yellow-400' : (tier === 2 ? 'text-slate-300' : 'text-slate-600'));
         for (var i = 0; i < tier; i++) {
             s += '<span class="' + c + ' text-[10px]">★</span>';
         }
@@ -78,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${data.units.map(u => `
                                 <div class="flex flex-col items-center">
                                     <div class="flex h-3 mb-1 items-center justify-center">${getStars(u.tier)}</div>
-                                    <img src="${u.image_url}" onerror="this.style.display='none'" class="h-12 w-12 rounded bg-slate-900 border ${u.tier === 3 ? 'border-yellow-500' : 'border-slate-700'}" alt="${u.character_id}">
+                                    <img src="${u.image_url}" onerror="this.style.display='none'" class="h-12 w-12 rounded bg-slate-900 border ${u.tier >= 4 ? 'border-teal-500' : (u.tier === 3 ? 'border-yellow-500' : 'border-slate-700')}" alt="${u.character_id}">
                                     <p class="text-[10px] mt-1 text-slate-400 font-medium truncate w-12 text-center capitalize">${formatName(u.character_id)}</p>
                                 </div>
                             `).join('')}
