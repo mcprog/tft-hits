@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, jsonify, session, send_from_directory
+from flask import Flask, render_template, request, jsonify, session, send_from_directory, redirect, url_for
 import requests
 import riot_api
 
@@ -35,10 +35,6 @@ QUICK_LOOKUPS = {
     ]
 }
 
-@app.before_request
-def restrict_regions():
-    return None
-
 @app.route('/')
 def index():
     # Pass the data map directly to the index template launcher context
@@ -52,13 +48,30 @@ def games():
     full_username = request.form.get('username', '').strip()
     selected_region = request.form.get('region', 'NA').upper()
     
-    session['selected_region'] = selected_region
-    
     if not full_username or '#' not in full_username:
         return render_template('games.html', username=full_username, error="Invalid format. Use Name#Tag.")
     
+    # Browsers treat '#' as a local fragment and will not send it to the server.
+    # We replace it with a standard hyphen for clean, shareable URLs.
+    url_safe_id = full_username.replace('#', '-')
+    
+    # Redirect the user to the shareable URL route, appending the region as a query parameter
+    return redirect(url_for('games_user', riot_id=url_safe_id, region=selected_region))
+
+@app.route('/games/<riot_id>')
+def games_user(riot_id):
+    # Pull region from query parameters, fallback to session, default to NA
+    selected_region = request.args.get('region', session.get('selected_region', 'NA')).upper()
+    session['selected_region'] = selected_region
+    
     try:
-        name, tag = full_username.split('#', 1)
+        if '-' not in riot_id:
+            return render_template('games.html', error="Invalid URL format. Must contain a tag (e.g., Name-Tag).")
+        
+        # Split from the right to safely handle usernames that naturally contain hyphens
+        name, tag = riot_id.rsplit('-', 1)
+        full_username = f"{name}#{tag}"
+        
         account_data = riot_api.get_account(name.strip(), tag.strip(), region=selected_region)
         
         if account_data:
@@ -75,7 +88,7 @@ def games():
         else:
             return render_template('games.html', username=full_username, error=f"Account not found in region: {selected_region}")
     except Exception as e:
-        return render_template('games.html', username=full_username, error=f"System Error: {str(e)}")
+        return render_template('games.html', username=riot_id, error=f"System Error: {str(e)}")
 
 @app.route('/api/match_details/<match_id>')
 def match_details(match_id):
