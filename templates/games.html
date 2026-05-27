@@ -1,7 +1,6 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="max-w-4xl mx-auto pt-12 pb-24">
-    <!-- Header Area -->
     <div class="flex justify-between items-end border-b-4 border-slate-700/60 pb-6 mb-8">
         <div>
             <a href="/" class="text-blue-500 hover:text-blue-400 font-bold text-sm uppercase tracking-wider mb-2 inline-flex items-center gap-2 transition-colors">
@@ -9,27 +8,33 @@
             </a>
             <h2 class="text-4xl font-black italic tracking-tight text-white">{{ username }}</h2>
         </div>
-        <!-- Share button placeholder for Phase 4 -->
-        <div id="share-container"></div>
+        
+        {% if puuid %}
+        <div>
+            <button id="share-btn" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 hover:text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-md">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M4.715 6.542 3.343 7.914a3 3 0 1 0 4.243 4.243l1.828-1.829A3 3 0 0 0 8.586 5.5L8 6.086a1.002 1.002 0 0 0-.154.199 2 2 0 0 1 .861 3.337L6.88 11.45a2 2 0 1 1-2.83-2.83l.793-.792a4.018 4.018 0 0 1-.128-1.287z"/>
+                    <path d="M6.586 4.672A3 3 0 0 0 7.414 9.5l.775-.776a2 2 0 0 1-.896-3.346L9.12 3.55a2 2 0 1 1 2.83 2.83l-.793.792c.112.42.155.855.128 1.287l1.372-1.372a3 3 0 1 0-4.243-4.243L6.586 4.672z"/>
+                </svg>
+                <span id="share-text">Share Link</span>
+            </button>
+        </div>
+        {% endif %}
     </div>
 
     {% if puuid %}
         <input type="hidden" id="user-puuid" value="{{ puuid }}">
     {% endif %}
 
-    <!-- UNIFIED STATUS PANEL (Minimal & Clean) -->
     <div id="unified-status-panel" class="{% if not error and not puuid %}hidden{% endif %} bg-slate-800/50 border border-slate-700/60 p-8 rounded-xl shadow-lg text-center mb-8 max-w-2xl mx-auto mt-8 transition-all">
         {% if error %}
-            <!-- Backend Error State -->
             <h3 id="status-title" class="text-xl font-bold text-slate-200 mb-2 uppercase tracking-tight">Search Failed</h3>
             <p id="status-message" class="text-slate-400 font-medium">{{ error }}</p>
             <a href="/" class="mt-6 inline-block bg-slate-700 hover:bg-slate-600 text-white px-6 py-2 rounded font-bold transition-colors">Try Another Search</a>
         {% elif puuid %}
-            <!-- Active Scanning State -->
             <h3 id="status-title" class="text-xl font-bold text-slate-200 mb-2 uppercase tracking-tight">Analyzing Data</h3>
             <p id="status-message" class="text-slate-400 font-medium mb-6">Deep scanning match history for high-rolls...</p>
             
-            <!-- Progress Bar injected inside the panel -->
             <div id="progress-container" class="w-full bg-slate-900 rounded-full h-2 border border-slate-700 overflow-hidden mb-2">
                 <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
@@ -40,12 +45,9 @@
     </div>
 
     {% if puuid %}
-        <!-- Match Cards Container -->
         <div id="games-container" data-match-ids='{{ match_ids | tojson | safe }}' class="flex flex-col gap-6 mb-12">
-            <!-- JS will inject match cards here -->
-        </div>
+            </div>
 
-        <!-- Pagination -->
         <div class="text-center">
             <button id="load-more-btn" disabled class="bg-slate-800 hover:bg-slate-700 text-white border border-slate-600 px-8 py-4 rounded-xl font-black uppercase tracking-wider text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">
                 Preparing Scan...
@@ -54,6 +56,5 @@
     {% endif %}
 </div>
 
-<!-- Cache-busting script tag forces the browser to load the fresh file -->
-<script src="{{ url_for('static', filename='js/games.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/games.js') }}?v={{ range(1, 999999) | random }}"></script>
 {% endblock %}

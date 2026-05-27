@@ -3,6 +3,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const container = document.getElementById('games-container');
     const loadMoreBtn = document.getElementById('load-more-btn');
     const statusPanel = document.getElementById('unified-status-panel');
+    const shareBtn = document.getElementById('share-btn');
+
+    // Clipboard Share Logic
+    if (shareBtn) {
+        shareBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(window.location.href);
+                const textSpan = document.getElementById('share-text');
+                
+                // Trigger visual success state
+                textSpan.innerText = 'Copied!';
+                shareBtn.classList.add('text-green-400', 'border-green-500/50');
+                shareBtn.classList.remove('text-slate-300', 'border-slate-600');
+                
+                // Revert after 2 seconds
+                setTimeout(() => {
+                    textSpan.innerText = 'Share Link';
+                    shareBtn.classList.remove('text-green-400', 'border-green-500/50');
+                    shareBtn.classList.add('text-slate-300', 'border-slate-600');
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy link', err);
+            }
+        });
+    }
 
     if (!puuidElement || !container || !loadMoreBtn) return;
 
