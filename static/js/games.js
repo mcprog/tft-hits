@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const puuidElement = document.getElementById('user-puuid');
     const container = document.getElementById('games-container');
     const loadMoreBtn = document.getElementById('load-more-btn');
+    const statusPanel = document.getElementById('unified-status-panel');
 
     if (!puuidElement || !container || !loadMoreBtn) return;
 
@@ -9,16 +10,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentOffset = 90;
     let epicCount = 0;
     let processedCount = 0;
-    let totalInBatch = JSON.parse(container.getAttribute('data-match-ids')).length;
+    let totalInBatch = 0;
 
     function formatName(name) {
+        if (!name) return '';
         if (name === 'Galio') return 'The Mighty Mech';
         if (name === 'IvernMinion') return 'Meepsie';
         if (name.toLowerCase() === 'bardfollower') return 'Meeplord';
         return name;
     }
 
-    // Updated to support 4-star teal coloring
     function getStars(tier) {
         var s = '';
         var c = tier >= 4 ? 'text-teal-400' : (tier === 3 ? 'text-yellow-400' : (tier === 2 ? 'text-slate-300' : 'text-slate-600'));
@@ -28,66 +29,116 @@ document.addEventListener('DOMContentLoaded', () => {
         return s;
     }
 
+    function prepareScan(ids) {
+        processedCount = 0;
+        totalInBatch = ids.length;
+        
+        if (statusPanel) {
+            statusPanel.classList.remove('hidden');
+            
+            const title = document.getElementById('status-title');
+            if (title) {
+                title.innerText = 'Analyzing Data';
+                title.className = 'text-xl font-bold text-slate-200 mb-2 uppercase tracking-tight';
+            }
+            
+            const msg = document.getElementById('status-message');
+            if (msg) msg.innerText = 'Deep scanning match history for high-rolls...';
+            
+            const pbar = document.getElementById('progress-bar');
+            if (pbar) pbar.style.width = "0%";
+            
+            const ptext = document.getElementById('progress-text');
+            if (ptext) ptext.innerHTML = `<span id="processed-count">0</span>/<span id="total-to-scan">${totalInBatch}</span> scanned`;
+        }
+
+        container.innerHTML = ''; // Ensure container is completely clean before injection
+
+        ids.forEach(mid => {
+            const div = document.createElement('div');
+            div.id = `match-${mid}`;
+            div.className = "match-placeholder bg-slate-800 p-6 rounded-xl border border-slate-700 animate-pulse";
+            div.innerHTML = '<div class="h-24"></div>';
+            container.appendChild(div);
+        });
+    }
+
     function updateProgress() {
         processedCount++;
-        const percent = (processedCount / totalInBatch) * 100;
-        document.getElementById('processed-count').innerText = processedCount;
-        document.getElementById('progress-bar').style.width = `${percent}%`;
+        const percent = totalInBatch === 0 ? 100 : (processedCount / totalInBatch) * 100;
         
-        if (processedCount === totalInBatch) {
+        const countEl = document.getElementById('processed-count');
+        if (countEl) countEl.innerText = Math.min(processedCount, totalInBatch);
+        
+        const barEl = document.getElementById('progress-bar');
+        if (barEl) barEl.style.width = `${Math.min(percent, 100)}%`;
+        
+        if (processedCount >= totalInBatch) {
             loadMoreBtn.disabled = false;
             loadMoreBtn.innerText = "Load Another 90 Games";
             
-            document.getElementById('search-status').innerText = "Analysis complete for Set 17 high-rolls.";
-            document.getElementById('progress-text').innerHTML = `Scan complete: <span class="text-blue-400 font-bold">${epicCount}</span> high-rolls found`;
-            
-            if (epicCount === 0) document.getElementById('no-results').classList.remove('hidden');
+            if (epicCount === 0 && statusPanel) {
+                const title = document.getElementById('status-title');
+                if (title) {
+                    title.innerText = 'No High-Rolls Found';
+                    title.className = 'text-xl font-bold text-blue-400 mb-2 uppercase tracking-tight';
+                }
+                
+                const msg = document.getElementById('status-message');
+                if (msg) msg.innerText = 'This player hasn\'t hit a Prismatic vertical or a 3-Star 4/5-cost champion in this batch of games.';
+                statusPanel.classList.remove('hidden');
+            } else if (epicCount > 0 && statusPanel) {
+                statusPanel.classList.add('hidden');
+            }
         }
     }
 
     async function fetchMatch(matchId) {
         try {
             const response = await fetch(`/api/match_details/${matchId}?puuid=${puuid}`);
+            if (!response.ok) throw new Error('Network error on match payload');
+            
             const data = await response.json();
             const element = document.getElementById(`match-${matchId}`);
 
             if (data && data.is_epic) {
                 epicCount++;
-                element.classList.remove('animate-pulse');
-
-                element.innerHTML = `
-                    <div class="flex flex-col gap-6">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                                    ${data.readable_date} • <span class="text-blue-400">${data.game_mode}</span>
-                                </p>
-                                <h3 class="text-2xl font-black italic">Place: <span class="text-blue-400">#${data.placement}</span></h3>
-                                <div class="flex flex-wrap gap-2 mt-3">
-                                    ${data.has_prismatic ? `<span class="bg-purple-900/40 text-purple-300 px-3 py-1 rounded border border-purple-500/50 text-xs font-bold uppercase tracking-tight">PRISMATIC ${data.prismatic_name}</span>` : ''}
-                                    ${data.has_high_cost_3star ? data.high_cost_units.map(n => `
-                                        <span class="bg-yellow-900/40 text-yellow-300 px-3 py-1 rounded border border-yellow-500/50 text-xs font-bold uppercase tracking-tight">3* ${formatName(n)}</span>
-                                    `).join('') : ''}
+                if (element) {
+                    element.classList.remove('animate-pulse');
+                    element.innerHTML = `
+                        <div class="flex flex-col gap-6">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                                        ${data.readable_date} • <span class="text-blue-400">${data.game_mode}</span>
+                                    </p>
+                                    <h3 class="text-2xl font-black italic">Place: <span class="text-blue-400">#${data.placement}</span></h3>
+                                    <div class="flex flex-wrap gap-2 mt-3">
+                                        ${data.has_prismatic ? `<span class="bg-purple-900/40 text-purple-300 px-3 py-1 rounded border border-purple-500/50 text-xs font-bold uppercase tracking-tight">PRISMATIC ${data.prismatic_name}</span>` : ''}
+                                        ${data.has_high_cost_3star ? data.high_cost_units.map(n => `
+                                            <span class="bg-yellow-900/40 text-yellow-300 px-3 py-1 rounded border border-yellow-500/50 text-xs font-bold uppercase tracking-tight">3* ${formatName(n)}</span>
+                                        `).join('') : ''}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700/50">
-                            ${data.units.map(u => `
-                                <div class="flex flex-col items-center">
-                                    <div class="flex h-3 mb-1 items-center justify-center">${getStars(u.tier)}</div>
-                                    <img src="${u.image_url}" onerror="this.style.display='none'" class="h-12 w-12 rounded bg-slate-900 border ${u.tier >= 4 ? 'border-teal-500' : (u.tier === 3 ? 'border-yellow-500' : 'border-slate-700')}" alt="${u.character_id}">
-                                    <p class="text-[10px] mt-1 text-slate-400 font-medium truncate w-12 text-center capitalize">${formatName(u.character_id)}</p>
-                                </div>
-                            `).join('')}
+                            <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700/50">
+                                ${data.units.map(u => `
+                                    <div class="flex flex-col items-center">
+                                        <div class="flex h-3 mb-1 items-center justify-center">${getStars(u.tier)}</div>
+                                        <img src="${u.image_url}" onerror="this.style.display='none'" class="h-12 w-12 rounded bg-slate-900 border ${u.tier >= 4 ? 'border-teal-500' : (u.tier === 3 ? 'border-yellow-500' : 'border-slate-700')}" alt="${u.character_id}">
+                                        <p class="text-[10px] mt-1 text-slate-400 font-medium truncate w-12 text-center capitalize">${formatName(u.character_id)}</p>
+                                    </div>
+                                `).join('')}
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                }
             } else {
                 if (element) element.remove();
             }
         } catch (err) {
-            console.error("Error loading match:", err);
+            console.error("Error loading match array:", err);
             const element = document.getElementById(`match-${matchId}`);
             if (element) element.remove();
         } finally {
@@ -98,7 +149,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function processQueue(ids, concurrency) {
         loadMoreBtn.disabled = true;
         loadMoreBtn.innerText = "Scanning Matches...";
-        document.getElementById('no-results').classList.add('hidden');
         
         const queue = [...ids];
         const workers = [];
@@ -108,7 +158,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 while (queue.length > 0) {
                     const id = queue.shift();
                     await fetchMatch(id);
-                    await new Promise(r => setTimeout(r, 100));
                 }
             })());
         }
@@ -122,26 +171,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const newIds = await res.json();
             if (newIds.length === 0) { loadMoreBtn.innerText = "No More Matches"; return; }
 
-            processedCount = 0; 
-            epicCount = 0; 
-            totalInBatch = newIds.length; 
             currentOffset += 90;
-
-            document.getElementById('search-status').innerText = "Deep search: Analyzing matches for Set 17 high-rolls.";
-            document.getElementById('progress-text').innerHTML = `<span id="processed-count">0</span>/<span id="total-to-scan">${totalInBatch}</span> scanned`;
-            document.getElementById('progress-bar').style.width = "0%";
-
-            newIds.forEach(mid => {
-                const div = document.createElement('div');
-                div.id = `match-${mid}`;
-                div.className = "match-placeholder bg-slate-800 p-6 rounded-xl border border-slate-700 animate-pulse";
-                div.innerHTML = '<div class="h-24"></div>';
-                container.appendChild(div);
-            });
-
+            prepareScan(newIds);
             processQueue(newIds, 5);
-        } catch (err) { loadMoreBtn.disabled = false; }
+        } catch (err) { 
+            loadMoreBtn.disabled = false; 
+        }
     });
 
-    processQueue(JSON.parse(container.getAttribute('data-match-ids')), 5);
+    // Capture IDs passed directly from the Jinja environment and execute
+    let initialIds = [];
+    try {
+        const rawAttr = container.getAttribute('data-match-ids');
+        if (rawAttr) {
+            initialIds = JSON.parse(rawAttr);
+        }
+    } catch(e) {
+        console.error("Failed to parse initial match IDs", e);
+    }
+
+    if (initialIds && initialIds.length > 0) {
+        prepareScan(initialIds);
+        processQueue(initialIds, 5);
+    } else {
+        totalInBatch = 0;
+        updateProgress();
+    }
 });
