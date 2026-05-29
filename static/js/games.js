@@ -61,6 +61,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statusPanel) {
             statusPanel.classList.remove('hidden');
             
+            const icon = document.getElementById('status-icon');
+            if (icon) {
+                icon.innerText = '📡';
+                icon.classList.add('animate-pulse');
+            }
+            
             const title = document.getElementById('status-title');
             if (title) {
                 title.innerText = 'Analyzing Data';
@@ -103,6 +109,12 @@ document.addEventListener('DOMContentLoaded', () => {
             loadMoreBtn.innerText = "Load Another 90 Games";
             
             if (epicCount === 0 && statusPanel) {
+                const icon = document.getElementById('status-icon');
+                if (icon) {
+                    icon.innerText = '📭';
+                    icon.classList.remove('animate-pulse');
+                }
+                
                 const title = document.getElementById('status-title');
                 if (title) {
                     title.innerText = 'No High-Rolls Found';
@@ -151,8 +163,19 @@ document.addEventListener('DOMContentLoaded', () => {
                                 ${data.units.map(u => `
                                     <div class="flex flex-col items-center">
                                         <div class="flex h-3 mb-1 items-center justify-center">${getStars(u.tier)}</div>
-                                        <img src="${u.image_url}" onerror="this.style.display='none'" class="h-12 w-12 rounded bg-slate-900 border ${u.tier >= 4 ? 'border-teal-500' : (u.tier === 3 ? 'border-yellow-500' : 'border-slate-700')}" alt="${u.character_id}">
-                                        <p class="text-[10px] mt-1 text-slate-400 font-medium truncate w-12 text-center capitalize">${formatName(u.character_id)}</p>
+                                        <img src="${u.image_url}" onerror="this.style.display='none'" class="h-12 w-12 rounded bg-slate-900 border ${u.tier >= 4 ? 'border-teal-500' : (u.tier === 3 ? 'border-yellow-500' : 'border-slate-700')} mb-1" alt="${u.character_id}">
+                                        
+                                        ${u.items && u.items.length > 0 ? `
+                                        <div class="flex gap-0.5 justify-center mb-1">
+                                            ${u.items.map(itemUrl => `
+                                                <div class="w-4 h-4 rounded-sm bg-slate-700 border border-slate-900 overflow-hidden">
+                                                    <img src="${itemUrl}" onerror="this.style.display='none'" class="w-full h-full object-cover">
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        ` : '<div class="h-5 mb-1"></div>'}
+                                        
+                                        <p class="text-[10px] text-slate-400 font-medium truncate w-16 text-center capitalize">${formatName(u.character_id)}</p>
                                     </div>
                                 `).join('')}
                             </div>

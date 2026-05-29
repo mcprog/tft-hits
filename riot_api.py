@@ -7,6 +7,39 @@ from datetime import datetime
 load_dotenv()
 API_KEY = os.environ.get("RIOT_API_KEY")
 
+# --- Community Dragon Item Mapping ---
+# We fetch the official TFT item dictionary on startup to dynamically map apiNames to exact asset URLs.
+ITEM_URL_MAP = {}
+
+def initialize_item_map():
+    print("[INIT] Fetching Community Dragon TFT Item Map...", flush=True)
+    try:
+        url = "https://raw.communitydragon.org/latest/cdragon/tft/en_us.json"
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            for item in data.get("items", []):
+                api_name = item.get("apiName")
+                icon_path = item.get("icon")
+                if api_name and icon_path:
+                    # CDragon internal paths look like: ASSETS/Maps/TFT/.../TFT_Item_BlueBuff.TFT_Set13.dds
+                    # We lowercase it and replace the .dds extension with .png for the web asset.
+                    clean_path = icon_path.lower().replace(".dds", ".png").replace(".tex", ".png")
+                    
+                    if clean_path.startswith('/'):
+                        clean_path = clean_path[1:]
+                        
+                    ITEM_URL_MAP[api_name] = f"https://raw.communitydragon.org/latest/game/{clean_path}"
+            print(f"[INIT] Loaded {len(ITEM_URL_MAP)} item URLs successfully.", flush=True)
+        else:
+            print("[INIT] Failed to load Community Dragon item map.", flush=True)
+    except Exception as e:
+        print(f"[INIT] Error loading item map: {e}", flush=True)
+
+# Run once on server boot
+initialize_item_map()
+
+
 # Set 17 Prismatic Trait Thresholds
 VALID_PRISMATICS = {
     "TFT17_Trait_DarkStar": 9,
@@ -176,10 +209,18 @@ def get_single_match_detail(match_id, target_puuid, region="NA"):
             else:
                 img_url = f"https://raw.communitydragon.org/latest/game/assets/ux/tft/championsplashes/patching/{raw_id}_teamplanner_splash.tft_set17.png"
             
+            # Utilize the initialized map to guarantee correct item paths
+            item_urls = []
+            for item_name in u.get('itemNames', []):
+                item_url = ITEM_URL_MAP.get(item_name)
+                if item_url:
+                    item_urls.append(item_url)
+            
             processed_units.append({
                 "character_id": u['character_id'].split('_')[-1],
                 "tier": u['tier'],
                 "image_url": img_url,
+                "items": item_urls,
                 "is_summon": "summon" in raw_id or "follower" in raw_id
             })
 
