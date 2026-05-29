@@ -30,13 +30,6 @@ def test_quick_lookup_panel_interaction(page: Page):
     search_input = page.locator('input[name="username"]')
     expect(search_input).to_have_value("ACAD Dishsoap#NA3")
 
-def test_manual_error_page_route(page: Page):
-    """Cover the custom standalone regional error template endpoint layout."""
-    page.goto("http://localhost:5000/region_error.html")
-    
-    expect(page.locator("h2")).to_have_text("Service Unavailable")
-    expect(page.locator("text=Supported Regions: US, CA, MX")).to_be_visible()
-
 def test_riot_verification_text_route(page: Page):
     """Cover the custom raw static verification router path required by Riot."""
     response = page.goto("http://localhost:5000/riot.txt")

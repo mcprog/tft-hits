@@ -1,7 +1,12 @@
 import pytest
 import os
+import time
 import js2py
 from unittest.mock import patch, MagicMock
+
+import app
+import riot_api
+
 from riot_api import (
     VALID_PRISMATICS,
     get_account,
@@ -9,6 +14,87 @@ from riot_api import (
     get_single_match_detail,
     make_request
 )
+
+# Flask Endpoints
+
+@pytest.fixture
+def client():
+    app.app.config['TESTING'] = True
+    app.app.secret_key = 'test_secret'
+    with app.app.test_client() as client:
+        yield client
+
+def test_index_route(client):
+    response = client.get('/')
+    assert response.status_code == 200
+    assert b"Dishsoap" in response.data
+
+def test_games_get_route(client):
+    response = client.get('/games')
+    assert response.status_code == 200
+
+def test_games_post_invalid_format(client):
+    response = client.post('/games', data={'username': 'InvalidUser', 'region': 'NA'})
+    assert response.status_code == 200
+    assert b"Invalid format" in response.data
+
+@patch('riot_api.get_account')
+def test_games_post_valid_redirect(mock_get_account, client):
+    response = client.post('/games', data={'username': 'Dishsoap#NA3', 'region': 'NA'})
+    assert response.status_code == 302
+    assert "games/Dishsoap-NA3" in response.headers['Location']
+
+@patch('riot_api.get_account')
+@patch('riot_api.get_match_ids')
+def test_games_user_route_success(mock_get_match_ids, mock_get_account, client):
+    mock_get_account.return_value = {'puuid': 'mock-puuid-123'}
+    mock_get_match_ids.return_value = ['NA1_12345', 'NA1_67890']
+    response = client.get('/games/Dishsoap-NA3?region=NA')
+    assert response.status_code == 200
+    assert b"mock-puuid-123" in response.data
+
+def test_games_user_route_invalid_format(client):
+    response = client.get('/games/InvalidFormatNoDash')
+    assert response.status_code == 200
+    assert b"Invalid URL format" in response.data
+
+@patch('riot_api.get_account')
+def test_games_user_route_not_found(mock_get_account, client):
+    mock_get_account.return_value = None
+    response = client.get('/games/NoPlayer-TAG?region=NA')
+    assert response.status_code == 200
+    assert b"Account not found" in response.data
+
+@patch('riot_api.get_account')
+def test_games_user_route_system_error(mock_get_account, client):
+    mock_get_account.side_effect = Exception("Database Down")
+    response = client.get('/games/Dishsoap-NA3?region=NA')
+    assert response.status_code == 200
+    assert b"System Error: Database Down" in response.data
+
+def test_api_match_details_missing_puuid(client):
+    response = client.get('/api/match_details/NA1_123')
+    assert response.status_code == 400
+
+@patch('riot_api.get_single_match_detail')
+def test_api_match_details_success(mock_get_detail, client):
+    mock_get_detail.return_value = {'is_epic': True, 'placement': 1}
+    response = client.get('/api/match_details/NA1_123?puuid=test-puuid')
+    assert response.status_code == 200
+    assert response.json['placement'] == 1
+
+def test_api_get_more_ids_missing_puuid(client):
+    response = client.get('/api/get_more_ids')
+    assert response.status_code == 400
+
+@patch('riot_api.get_match_ids')
+def test_api_get_more_ids_success(mock_get_ids, client):
+    mock_get_ids.return_value = ['ID1', 'ID2']
+    response = client.get('/api/get_more_ids?puuid=test-puuid&start=90')
+    assert response.status_code == 200
+
+
+# JS Parsing Tests
 
 def load_js_function(function_name):
     # Resolve absolute path to games.js inside the static assets directory
@@ -77,12 +163,27 @@ def test_get_stars():
     raw_html = get_stars(0)
     assert raw_html.count('★') == 0
 
+# Riot API Tests
 
 def test_prismatic_thresholds():
     assert VALID_PRISMATICS["TFT17_Trait_DarkStar"] == 9
     assert VALID_PRISMATICS["TFT17_Trait_Meeple"] == 10
     assert VALID_PRISMATICS["TFT17_Trait_SpaceGroove"] == 10
     assert VALID_PRISMATICS["TFT17_Trait_Stargazer"] == 11
+
+@patch('requests.get')
+def test_initialize_item_map_failure(mock_get):
+    mock_get.return_value = MagicMock(status_code=404)
+    with patch('builtins.print') as mock_print:
+        riot_api.initialize_item_map()
+        mock_print.assert_any_call("[INIT] Failed to load Community Dragon item map.", flush=True)
+
+@patch('requests.get')
+def test_initialize_item_map_exception(mock_get):
+    mock_get.side_effect = Exception("Timeout")
+    with patch('builtins.print') as mock_print:
+        riot_api.initialize_item_map()
+        assert any("Error loading item map:" in str(call) for call in mock_print.call_args_list)
 
 @patch('riot_api.requests.get')
 def test_make_request_rate_limit(mock_get):
@@ -96,9 +197,26 @@ def test_make_request_rate_limit(mock_get):
     
     mock_get.side_effect = [mock_429, mock_200]
 
-    response = make_request("http://dummy-url", {"X-Riot-Token": "test"})
-    assert response.status_code == 200
-    assert mock_get.call_count == 2
+    with patch('time.sleep') as mock_sleep:
+        response = make_request("http://dummy-url", {"X-Riot-Token": "test"})
+        assert response.status_code == 200
+        assert mock_get.call_count == 2
+        mock_sleep.assert_called_with(0)
+
+@patch('requests.get')
+def test_make_request_active_backoff_cooldown(mock_get):
+    riot_api.ROUTE_BACKOFFS["americas"] = time.time() + 100
+    mock_get.return_value = MagicMock(status_code=200)
+    with patch('time.sleep') as mock_sleep:
+        riot_api.make_request("https://americas.api.riotgames.com/test", headers={})
+        mock_sleep.assert_called_once()
+    del riot_api.ROUTE_BACKOFFS["americas"]
+
+@patch('requests.get')
+def test_make_request_exception(mock_get):
+    mock_get.side_effect = Exception("Connection Reset")
+    res = riot_api.make_request("https://americas.api.riotgames.com/test", headers={})
+    assert res is None
 
 @patch('riot_api.make_request')
 def test_get_account(mock_make_req):
@@ -113,6 +231,12 @@ def test_get_account(mock_make_req):
     # Case 2: Server failure or wrong tag
     mock_response.status_code = 404
     assert get_account("FakeUser", "0000") is None
+
+@patch('requests.get')
+def test_get_account_sea_routing_override(mock_get):
+    mock_get.return_value = MagicMock(status_code=200)
+    riot_api.get_account("YBY1", "0615", region="VN")
+    assert "asia.api.riotgames.com" in mock_get.call_args[0][0]
 
 @patch('riot_api.make_request')
 def test_get_match_ids(mock_make_request):
@@ -167,4 +291,33 @@ def test_get_single_match_detail_excluded_mode(mock_make_request):
     mock_make_request.return_value = mock_response
     
     result = get_single_match_detail("NA_1", "player-1")
-    assert result["is_epic"] is False    
+    assert result["is_epic"] is False  
+
+@patch('requests.get')
+def test_get_single_match_detail_missing_participant(mock_get):
+    mock_match_payload = {
+        "info": {"tft_set_number": 17, "queue_id": 1100, "participants": [{"puuid": "some-other-player"}]}
+    }
+    mock_get.return_value = MagicMock(status_code=200, json=lambda: mock_match_payload)
+    res = riot_api.get_single_match_detail("NA1_999", "target-puuid")
+    assert res["is_epic"] is False
+
+@patch('requests.get')
+def test_get_single_match_detail_bardfollower_override(mock_get):
+    mock_match_payload = {
+        "info": {
+            "tft_set_number": 17,
+            "queue_id": 1100,
+            "game_datetime": 1714483200000,
+            "participants": [{
+                "puuid": "target-puuid",
+                "placement": 1,
+                "traits": [],
+                "units": [{"character_id": "TFT17_BardFollower", "tier": 4, "itemNames": []}]
+            }]
+        }
+    }
+    mock_get.return_value = MagicMock(status_code=200, json=lambda: mock_match_payload)
+    res = riot_api.get_single_match_detail("NA1_999", "target-puuid")
+    assert res["is_epic"] is True
+    assert res["prismatic_name"] == "Meeple"  
