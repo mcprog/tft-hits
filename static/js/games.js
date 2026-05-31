@@ -39,9 +39,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function formatName(name) {
         if (!name) return '';
-        if (name === 'Galio') return 'The Mighty Mech';
-        if (name === 'IvernMinion') return 'Meepsie';
-        if (name.toLowerCase() === 'bardfollower') return 'Meeplord';
+        
+        const lowerName = name.toLowerCase();
+        if (lowerName === 'galio') return 'The Mighty Mech';
+        if (lowerName === 'ivernminion') return 'Meepsie';
+        if (lowerName === 'bardfollower') return 'Meeplord';
+        if (lowerName === 'belveth') return "Bel'Veth";
+        if (lowerName === 'kaisa') return "Kai'Sa";
+        if (lowerName === 'aurelionsol') return 'Aurelion Sol';
+        if (lowerName === 'masteryi') return 'Master Yi';
+        if (lowerName === 'twistedfate') return 'Twisted Fate';
+        
         return name;
     }
 
@@ -60,12 +68,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (statusPanel) {
             statusPanel.classList.remove('hidden');
-            
-            const icon = document.getElementById('status-icon');
-            if (icon) {
-                icon.innerText = '📡';
-                icon.classList.add('animate-pulse');
-            }
             
             const title = document.getElementById('status-title');
             if (title) {
@@ -109,12 +111,6 @@ document.addEventListener('DOMContentLoaded', () => {
             loadMoreBtn.innerText = "Load Another 90 Games";
             
             if (epicCount === 0 && statusPanel) {
-                const icon = document.getElementById('status-icon');
-                if (icon) {
-                    icon.innerText = '📭';
-                    icon.classList.remove('animate-pulse');
-                }
-                
                 const title = document.getElementById('status-title');
                 if (title) {
                     title.innerText = 'No High-Rolls Found';
@@ -161,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             <div class="flex flex-wrap gap-3 pt-4 border-t border-slate-700/50">
                                 ${data.units.map(u => `
-                                    <div class="flex flex-col items-center">
+                                    <div class="flex flex-col items-center w-16">
                                         <div class="flex h-3 mb-1 items-center justify-center">${getStars(u.tier)}</div>
                                         <img src="${u.image_url}" onerror="this.style.display='none'" class="h-12 w-12 rounded bg-slate-900 border ${u.tier >= 4 ? 'border-teal-500' : (u.tier === 3 ? 'border-yellow-500' : 'border-slate-700')} mb-1" alt="${u.character_id}">
                                         
@@ -175,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         </div>
                                         ` : '<div class="h-5 mb-1"></div>'}
                                         
-                                        <p class="text-[10px] text-slate-400 font-medium truncate w-16 text-center capitalize">${formatName(u.character_id)}</p>
+                                        <p class="text-[10px] text-slate-400 font-medium w-full text-center capitalize break-words leading-tight">${formatName(u.character_id)}</p>
                                     </div>
                                 `).join('')}
                             </div>
