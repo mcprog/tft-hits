@@ -1,5 +1,29 @@
 {% extends "layout.html" %}
 {% block content %}
+<style>
+    /* Draws the eye to a batch that found no high-rolls, then settles back to the normal border */
+    @keyframes notice-glow {
+        0%, 100% {
+            border-color: rgba(51, 65, 85, 0.6);
+            box-shadow: 0 0 0 0 rgba(96, 165, 250, 0);
+        }
+        50% {
+            border-color: rgb(96, 165, 250);
+            box-shadow: 0 0 28px 4px rgba(96, 165, 250, 0.55);
+        }
+    }
+
+    .notice-glow {
+        animation: notice-glow 1.5s ease-in-out 3;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .notice-glow {
+            animation: notice-glow 4s ease-out 1;
+        }
+    }
+</style>
+
 <div class="max-w-4xl mx-auto pt-12 pb-24">
     <div class="flex justify-between items-end border-b-4 border-slate-700/60 pb-6 mb-8">
         <div>
@@ -28,18 +52,18 @@
 
     <div id="unified-status-panel" class="{% if not error and not puuid %}hidden{% endif %} bg-slate-800/50 border border-slate-700/60 p-8 rounded-xl shadow-lg text-center mb-8 max-w-2xl mx-auto mt-8 transition-all">
         {% if error %}
-            <h3 id="status-title" class="text-xl font-bold text-slate-200 mb-2 uppercase tracking-tight">Search Failed</h3>
+            <h3 id="status-title" class="js-status-title text-xl font-bold text-slate-200 mb-2 uppercase tracking-tight">Search Failed</h3>
             <p id="status-message" class="text-slate-400 font-medium">{{ error }}</p>
             <a href="/" class="mt-6 inline-block bg-slate-700 hover:bg-slate-600 text-white px-6 py-2 rounded font-bold transition-colors">Try Another Search</a>
         {% elif puuid %}
-            <h3 id="status-title" class="text-xl font-bold text-slate-200 mb-2 uppercase tracking-tight">Analyzing Data</h3>
-            <p id="status-message" class="text-slate-400 font-medium mb-6">Deep scanning match history for high-rolls...</p>
+            <h3 id="status-title" class="js-status-title text-xl font-bold text-slate-200 mb-2 uppercase tracking-tight">Analyzing Data</h3>
+            <p id="status-message" class="js-status-message text-slate-400 font-medium mb-6">Deep scanning match history for high-rolls...</p>
             
             <div id="progress-container" class="w-full bg-slate-900 rounded-full h-2 border border-slate-700 overflow-hidden mb-2">
-                <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                <div id="progress-bar" class="js-progress-bar bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
             <div id="progress-text-wrapper" class="text-xs font-bold text-slate-500 uppercase tracking-wider text-right">
-                <span id="progress-text"><span id="processed-count">0</span>/<span id="total-to-scan">--</span> scanned</span>
+                <span id="progress-text"><span id="processed-count" class="js-processed-count">0</span>/<span id="total-to-scan" class="js-total-to-scan">--</span> scanned</span>
             </div>
         {% endif %}
     </div>
