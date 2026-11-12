@@ -1,7 +1,7 @@
-# TFT Set 17 Epic Match Tracker
+# TFT Set 18 Epic Match Tracker
 
 ## Purpose
-This web application automatically filters a player's Teamfight Tactics match history to find high-roll games from Set 17 (Space Gods). It identifies matches where the user achieved a Prismatic Trait or a 3-star 4-cost or 5-cost unit.
+This web application automatically filters a player's Teamfight Tactics match history to find high-roll games from Set 18. It identifies matches where the user achieved a Prismatic Trait or a 3-star 4-cost or 5-cost unit.
 
 ## Tech Stack
 * Backend: Python, Flask

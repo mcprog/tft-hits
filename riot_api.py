@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 import time
 from dotenv import load_dotenv
@@ -7,9 +8,56 @@ from datetime import datetime
 load_dotenv()
 API_KEY = os.environ.get("RIOT_API_KEY")
 
-# --- Community Dragon Item Mapping ---
-# We fetch the official TFT item dictionary on startup to dynamically map apiNames to exact asset URLs.
+# The TFT set this tracker processes. Matches from any other set are ignored.
+CURRENT_SET = 18
+
+CDRAGON_GAME_BASE = "https://raw.communitydragon.org/latest/game/"
+
+# --- Community Dragon Item and Champion Mapping ---
+# We fetch the official TFT data dictionary on startup to dynamically map apiNames to exact asset URLs.
 ITEM_URL_MAP = {}
+# Champion portraits keyed by exact apiName (e.g. DA_18_Ahri)
+CHAMPION_URL_MAP = {}
+# Champion portraits keyed by cleaned lowercase name (e.g. ahri), used when the match apiName differs from CDragon
+CHAMPION_URL_BY_NAME = {}
+
+# Matches internal apiName tokens that carry no champion or trait identity (DA, TFT18, Set18, Trait, 18)
+SET_PREFIX_TOKEN = re.compile(r'^(?:da|tft\d*|set\d+|trait|\d+)$', re.IGNORECASE)
+
+
+def clean_api_name(api_name):
+    """Strips Set 18 internal prefixes and variant suffixes from a trait or unit apiName.
+
+    DA_18_Elderwood -> Elderwood, DA_Vi18 -> Vi, DA_18_MasterYi_AD -> MasterYi,
+    DA_Lux18_Blossom -> Lux, TFT18_Trait_Blossom -> Blossom
+    """
+    if not api_name:
+        return ''
+
+    set_suffix = str(CURRENT_SET)
+    for token in api_name.split('_'):
+        if not token or SET_PREFIX_TOKEN.match(token):
+            continue
+        # Set 18 units often carry the set number as a suffix (DA_Vi18, DA_KogMaw18_AD)
+        if token.endswith(set_suffix) and len(token) > len(set_suffix):
+            token = token[:-len(set_suffix)]
+        # The first identifying token is the name; later tokens are variants (_AD, _AP, _Blossom)
+        return token
+
+    return api_name
+
+
+def cdragon_asset_url(icon_path):
+    """Converts a CDragon internal asset path (.tex/.dds) into a public .png URL."""
+    # CDragon internal paths look like: ASSETS/Maps/TFT/.../TFT_Item_BlueBuff.TFT_Set13.dds
+    # We lowercase it and replace the .dds extension with .png for the web asset.
+    clean_path = icon_path.lower().replace(".dds", ".png").replace(".tex", ".png")
+
+    if clean_path.startswith('/'):
+        clean_path = clean_path[1:]
+
+    return f"{CDRAGON_GAME_BASE}{clean_path}"
+
 
 def initialize_item_map():
     print("[INIT] Fetching Community Dragon TFT Item Map...", flush=True)
@@ -22,15 +70,19 @@ def initialize_item_map():
                 api_name = item.get("apiName")
                 icon_path = item.get("icon")
                 if api_name and icon_path:
-                    # CDragon internal paths look like: ASSETS/Maps/TFT/.../TFT_Item_BlueBuff.TFT_Set13.dds
-                    # We lowercase it and replace the .dds extension with .png for the web asset.
-                    clean_path = icon_path.lower().replace(".dds", ".png").replace(".tex", ".png")
-                    
-                    if clean_path.startswith('/'):
-                        clean_path = clean_path[1:]
-                        
-                    ITEM_URL_MAP[api_name] = f"https://raw.communitydragon.org/latest/game/{clean_path}"
+                    ITEM_URL_MAP[api_name] = cdragon_asset_url(icon_path)
             print(f"[INIT] Loaded {len(ITEM_URL_MAP)} item URLs successfully.", flush=True)
+
+            # Champion portraits for the current set come from the same dictionary
+            current_set = data.get("sets", {}).get(str(CURRENT_SET), {})
+            for champ in current_set.get("champions", []):
+                api_name = champ.get("apiName")
+                icon_path = champ.get("squareIcon") or champ.get("tileIcon")
+                if api_name and icon_path:
+                    champ_url = cdragon_asset_url(icon_path)
+                    CHAMPION_URL_MAP[api_name] = champ_url
+                    CHAMPION_URL_BY_NAME.setdefault(clean_api_name(api_name).lower(), champ_url)
+            print(f"[INIT] Loaded {len(CHAMPION_URL_MAP)} Set {CURRENT_SET} champion URLs successfully.", flush=True)
         else:
             print("[INIT] Failed to load Community Dragon item map.", flush=True)
     except Exception as e:
@@ -40,13 +92,30 @@ def initialize_item_map():
 initialize_item_map()
 
 
-# Set 17 Prismatic Trait Thresholds
+def get_champion_image_url(character_id):
+    """Resolves a unit's portrait from the CDragon champion map, falling back to the team planner splash."""
+    if character_id in CHAMPION_URL_MAP:
+        return CHAMPION_URL_MAP[character_id]
+
+    clean_id = clean_api_name(character_id).lower()
+    if clean_id in CHAMPION_URL_BY_NAME:
+        return CHAMPION_URL_BY_NAME[clean_id]
+
+    return f"{CDRAGON_GAME_BASE}assets/ux/tft/championsplashes/patching/tft{CURRENT_SET}_{clean_id}_teamplanner_splash.png"
+
+
+# Set 18 Prismatic Trait Thresholds (CDragon apiName -> units required for the Prismatic tier)
 VALID_PRISMATICS = {
-    "TFT17_Trait_DarkStar": 9,
-    "TFT17_Trait_Meeple": 10,
-    "TFT17_Trait_SpaceGroove": 10,
-    "TFT17_Trait_Stargazer": 11
+    "DA_18_Blossom": 11,
+    "DA_18_Elderwood": 11
 }
+
+# Thresholds keyed by cleaned lowercase trait name, so prefix variants still match
+PRISMATIC_THRESHOLDS = {clean_api_name(name).lower(): units for name, units in VALID_PRISMATICS.items()}
+
+# Minimum match API rarity that counts as a 4-cost or 5-cost unit.
+# Set 18 reports rarity as cost minus one (4-cost = 3, 5-cost = 4). Older sets used 4 and 6, which also pass.
+HIGH_COST_MIN_RARITY = 3
 
 # Strict mapping of standard game modes allowed to process
 QUEUE_MAP = {
@@ -109,30 +178,30 @@ def make_request(url, headers, max_retries=3):
             response = requests.get(url, headers=headers)
         except Exception:
             return None
-        
+
         if response.status_code == 429:
             retry_time = int(response.headers.get('Retry-After', 10))
             print(f"[RATE LIMIT] 429 Hit on route '{route}'. Backing off for {retry_time}s.", flush=True)
             ROUTE_BACKOFFS[route] = time.time() + retry_time
             time.sleep(retry_time)
             continue
-            
+
         return response
-        
+
     return None
 
 def get_account(name, tag, region="NA"):
     """Fetches account PUUID data and logs production search details."""
     print(f"[SEARCH] Player searched: {name}#{tag} in region: {region.upper()}", flush=True)
-    
+
     route = get_route_for_region(region)
     if route == "sea":
         route = "asia"
-        
+
     url = f"https://{route}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{name}/{tag}"
     headers = {"X-Riot-Token": API_KEY}
     res = make_request(url, headers)
-    
+
     if res and res.status_code == 200:
         return res.json()
     return None
@@ -143,28 +212,28 @@ def get_match_ids(puuid, count=20, start=0, region="NA"):
     url = f"https://{route}.api.riotgames.com/tft/match/v1/matches/by-puuid/{puuid}/ids?start={start}&count={count}"
     headers = {"X-Riot-Token": API_KEY}
     res = make_request(url, headers)
-    
+
     if res and res.status_code == 200:
         return res.json()
     return []
 
 def get_single_match_detail(match_id, target_puuid, region="NA"):
-    """Processes match details against Set 17 high-roll performance criteria."""
+    """Processes match details against Set 18 high-roll performance criteria."""
     prefix = match_id.split('_')[0].upper()
     route = MATCH_PREFIX_TO_ROUTE.get(prefix, get_route_for_region(region))
 
     url = f"https://{route}.api.riotgames.com/tft/match/v1/matches/{match_id}"
     headers = {"X-Riot-Token": API_KEY}
     res = make_request(url, headers)
-    
+
     if not res or res.status_code != 200:
         return {"is_epic": False}
 
     match_data = res.json()
     info = match_data.get("info", {})
     queue_id = info.get("queue_id")
-    
-    if info.get("tft_set_number") != 17 or queue_id in EXCLUDED_QUEUES:
+
+    if info.get("tft_set_number") != CURRENT_SET or queue_id in EXCLUDED_QUEUES:
         return {"is_epic": False}
 
     if queue_id not in QUEUE_MAP:
@@ -178,22 +247,16 @@ def get_single_match_detail(match_id, target_puuid, region="NA"):
     # 1. Prismatic Trait Check
     active_p = None
     for t in participant.get('traits', []):
-        t_name = t.get('name', '')
-        if t_name in VALID_PRISMATICS and t.get('num_units', 0) >= VALID_PRISMATICS[t_name]:
-            active_p = t_name.replace("TFT17_Trait_", "")
+        trait_name = clean_api_name(t.get('name', ''))
+        threshold = PRISMATIC_THRESHOLDS.get(trait_name.lower())
+        if threshold and t.get('num_units', 0) >= threshold:
+            active_p = trait_name
             break
-
-    # Bugfix Override: Check for Bardfollower summon data components.
-    if not active_p:
-        for u in participant.get('units', []):
-            if "bardfollower" in u.get('character_id', '').lower():
-                active_p = "Meeple"
-                break
 
     # 2. Epic 3-Star Check (Strictly exclude generic sub-summons as high-roll triggers)
     valid_3stars = [
-        u for u in participant.get('units', []) 
-        if u['tier'] == 3 and u['rarity'] >= 4 
+        u for u in participant.get('units', [])
+        if u['tier'] == 3 and u['rarity'] >= HIGH_COST_MIN_RARITY
         and "summon" not in u.get('character_id', '').lower()
     ]
 
@@ -201,23 +264,19 @@ def get_single_match_detail(match_id, target_puuid, region="NA"):
     if active_p or valid_3stars:
         processed_units = []
         for u in participant.get('units', []):
-            raw_id = u.get('character_id', '').lower()
-            
-            # Inject custom trait icon if the unit is a Meeple spawn
-            if "bardfollower" in raw_id:
-                img_url = "https://raw.communitydragon.org/latest/game/assets/ux/traiticons/trait_icon_17_astronaut.tft_set17.png"
-            else:
-                img_url = f"https://raw.communitydragon.org/latest/game/assets/ux/tft/championsplashes/patching/{raw_id}_teamplanner_splash.tft_set17.png"
-            
+            character_id = u.get('character_id', '')
+            raw_id = character_id.lower()
+            img_url = get_champion_image_url(character_id)
+
             # Utilize the initialized map to guarantee correct item paths
             item_urls = []
             for item_name in u.get('itemNames', []):
                 item_url = ITEM_URL_MAP.get(item_name)
                 if item_url:
                     item_urls.append(item_url)
-            
+
             processed_units.append({
-                "character_id": u['character_id'].split('_')[-1],
+                "character_id": clean_api_name(character_id),
                 "tier": u['tier'],
                 "image_url": img_url,
                 "items": item_urls,
@@ -232,7 +291,7 @@ def get_single_match_detail(match_id, target_puuid, region="NA"):
             "has_prismatic": active_p is not None,
             "prismatic_name": active_p,
             "has_high_cost_3star": len(valid_3stars) > 0,
-            "high_cost_units": [u['character_id'].split('_')[-1] for u in valid_3stars],
+            "high_cost_units": [clean_api_name(u['character_id']) for u in valid_3stars],
             "units": processed_units,
             "is_epic": True
         }

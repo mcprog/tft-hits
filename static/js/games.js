@@ -41,15 +41,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!name) return '';
         
         const lowerName = name.toLowerCase();
-        if (lowerName === 'galio') return 'The Mighty Mech';
-        if (lowerName === 'ivernminion') return 'Meepsie';
-        if (lowerName === 'bardfollower') return 'Meeplord';
         if (lowerName === 'belveth') return "Bel'Veth";
         if (lowerName === 'kaisa') return "Kai'Sa";
         if (lowerName === 'aurelionsol') return 'Aurelion Sol';
         if (lowerName === 'masteryi') return 'Master Yi';
         if (lowerName === 'twistedfate') return 'Twisted Fate';
-        
+
+        // Set 18 display names that differ from their internal apiName
+        if (lowerName === 'khazix') return "Kha'Zix";
+        if (lowerName === 'reksai') return "Rek'Sai";
+        if (lowerName === 'kogmaw') return "Kog'Maw";
+        if (lowerName === 'gnarsmall') return 'Gnar';
+        if (lowerName === 'sentry') return 'Pebbles';
+        if (lowerName === 'crimsonraptor') return 'Mama Beak';
+
         return name;
     }
 
@@ -138,6 +143,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 epicCount++;
                 if (element) {
                     element.classList.remove('animate-pulse');
+                    
+                    // --- DOUBLE UP PLACEMENT FIX ---
+                    // Convert individual placements (1-8) to team placements (1-4)
+                    let displayPlacement = data.placement;
+                    if (data.game_mode === 'Double Up') {
+                        displayPlacement = Math.ceil(data.placement / 2);
+                    }
+                    
                     element.innerHTML = `
                         <div class="flex flex-col gap-6">
                             <div class="flex justify-between items-start">
@@ -145,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
                                         ${data.readable_date} • <span class="text-blue-400">${data.game_mode}</span>
                                     </p>
-                                    <h3 class="text-2xl font-black italic">Place: <span class="text-blue-400">#${data.placement}</span></h3>
+                                    <h3 class="text-2xl font-black italic">Place: <span class="text-blue-400">#${displayPlacement}</span></h3>
                                     <div class="flex flex-wrap gap-2 mt-3">
                                         ${data.has_prismatic ? `<span class="bg-purple-900/40 text-purple-300 px-3 py-1 rounded border border-purple-500/50 text-xs font-bold uppercase tracking-tight">PRISMATIC ${data.prismatic_name}</span>` : ''}
                                         ${data.has_high_cost_3star ? data.high_cost_units.map(n => `
@@ -161,6 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <div class="flex h-3 mb-1 items-center justify-center">${getStars(u.tier)}</div>
                                         <img src="${u.image_url}" onerror="this.style.display='none'" class="h-12 w-12 rounded bg-slate-900 border ${u.tier >= 4 ? 'border-teal-500' : (u.tier === 3 ? 'border-yellow-500' : 'border-slate-700')} mb-1" alt="${u.character_id}">
                                         
+                                        <!-- Item Inline Row -->
                                         ${u.items && u.items.length > 0 ? `
                                         <div class="flex gap-0.5 justify-center mb-1">
                                             ${u.items.map(itemUrl => `
